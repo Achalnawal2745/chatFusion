@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatFusion - AI-Powered Content Chat</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h1>⚡ ChatFusion</h1>
+                    <p>Chat with YouTube videos and PDF documents using AI</p>
+                </div>
+                <button id="themeToggle" class="theme-toggle" title="Toggle Dark/Light Mode">
+                    <span class="theme-icon">🌙</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Tab Navigation -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="youtube">
+                🎥 YouTube Video
+            </button>
+            <button class="tab-btn" data-tab="pdf">
+                📄 PDF Document
+            </button>
+            <button class="tab-btn documents-btn" data-tab="documents">
+                📚 My Documents (<span id="doc-count">0</span>)
+            </button>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="tab-content">
+            <!-- YouTube Tab -->
+            <div id="youtube-tab" class="tab-pane active">
+                <div class="input-section">
+                    <h3>Process YouTube Video</h3>
+                    <div class="input-group">
+                        <input type="text" id="videoUrl" placeholder="Paste YouTube URL here..." />
+                        <button id="processVideoBtn" class="btn btn-primary">
+                            <span class="btn-text">Process Video</span>
+                            <span class="btn-loader" style="display: none;">⏳</span>
+                        </button>
+                    </div>
+                    <div id="videoStatus" class="status-message"></div>
+                </div>
+            </div>
+
+            <!-- PDF Tab -->
+            <div id="pdf-tab" class="tab-pane">
+                <div class="input-section">
+                    <h3>Upload PDF Document</h3>
+                    <div class="upload-area" id="uploadArea">
+                        <div class="upload-icon">📄</div>
+                        <p>Drop PDF here or click to upload</p>
+                        <p class="upload-hint">Max size: 10MB</p>
+                        <input type="file" id="pdfFile" accept=".pdf" style="display: none;" />
+                        <button id="uploadBtn" class="btn btn-secondary">Choose PDF File</button>
+                    </div>
+                    <div id="pdfStatus" class="status-message"></div>
+                </div>
+            </div>
+
+            <!-- Documents Tab -->
+            <div id="documents-tab" class="tab-pane">
+                <div class="documents-list">
+                    <h3>Processed Documents</h3>
+                    <div id="documentsList" class="docs-grid">
+                        <p class="empty-state">No documents processed yet</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Section -->
+        <div id="chatSection" class="chat-section" style="display: none;">
+            <div class="chat-header">
+                <div class="current-doc">
+                    <span class="doc-icon">📄</span>
+                    <span id="currentDocName">No document selected</span>
+                </div>
+                <div>
+                    <button id="clearChatBtn" class="btn btn-small"
+                        style="margin-right: 10px; background: #ff9800; color: white;">Clear Chat</button>
+                    <button id="newDocBtn" class="btn btn-small">+ New Document</button>
+                </div>
+            </div>
+
+            <div id="chatMessages" class="chat-messages">
+                <div class="welcome-message">
+                    <div class="welcome-icon">💬</div>
+                    <h3>Ready to chat!</h3>
+                    <p>Ask me anything about this document</p>
+                </div>
+            </div>
+
+            <div class="chat-input-container">
+                <textarea id="chatInput" placeholder="Ask a question about the document..." rows="2"></textarea>
+                <button id="sendBtn" class="btn btn-primary">
+                    <span>Send</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
