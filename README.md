@@ -30,7 +30,7 @@ An AI-powered chat application that lets you have intelligent conversations abou
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/chatfusion.git
+   git clone https://github.com/Achalnawal2745/chatfusion.git
    cd chatfusion
    ```
 
