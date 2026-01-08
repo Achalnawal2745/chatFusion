@@ -6,6 +6,7 @@ An AI-powered chat application that lets you have intelligent conversations abou
 ![Flask](https://img.shields.io/badge/Flask-3.0+-green.svg)
 ![Gemini](https://img.shields.io/badge/Gemini-API-orange.svg)
 ![Sentence-Transformers](https://img.shields.io/badge/Sentence--Transformers-Local-green.svg)
+![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 ## ✨ Features
 
@@ -298,6 +299,10 @@ If you encounter issues:
 2. Verify your API key is valid
 3. Ensure the video has captions
 4. Check terminal output for detailed errors
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
