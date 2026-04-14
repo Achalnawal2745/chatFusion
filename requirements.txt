@@ -8,4 +8,4 @@ sentence-transformers==2.5.1
 PyPDF2==3.0.1
 werkzeug==3.0.1
 gunicorn==21.2.0
-pysqlite3-binary==0.5.2.post3
+pysqlite3-binary
