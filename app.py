@@ -205,7 +205,24 @@ def process_video():
         
         # Get transcript
         try:
-            api = YouTubeTranscriptApi()
+            from youtube_transcript_api.proxies import GenericProxyConfig
+            import requests
+            import urllib3
+            
+            # Proxies like ScraperAPI intercept requests and use custom SSL certificates
+            # We disable SSL warnings so the console doesn't get flooded.
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            
+            proxy_url = os.getenv('PROXY_URL')
+            
+            # Configure custom session to disable SSL verification when using a proxy
+            client = requests.Session()
+            if proxy_url:
+                client.verify = False 
+                
+            # Pass the proxy to the API initialization if it exists
+            proxy_config = GenericProxyConfig(http_url=proxy_url, https_url=proxy_url) if proxy_url else None
+            api = YouTubeTranscriptApi(proxy_config=proxy_config, http_client=client)
             
             # Try to get transcript in multiple languages
             # Priority: Hindi, English, then any available
@@ -430,14 +447,22 @@ def chat():
         context = "\n\n".join(context_parts)
         
         # Generate response using Gemini
-        prompt = f"""You are a helpful assistant that answers questions about a YouTube video based on its transcript.
+        # Prepare dynamic prompt text based on document type
+        doc_type = doc_info.get('type', 'document')
+        is_video = doc_type == 'youtube'
+        
+        doc_noun = "YouTube video" if is_video else "PDF document"
+        content_noun = "transcript" if is_video else "text"
+        ref_noun = "timestamps in seconds" if is_video else "chunk numbers"
+        
+        prompt = f"""You are a helpful assistant that answers questions about a {doc_noun} based on its {content_noun}.
 
-Context from the video (with timestamps in seconds):
+Context from the {doc_noun} (with {ref_noun}):
 {context}
 
 User question: {question}
 
-Please provide a helpful answer based on the context above. If you reference specific information, mention the approximate timestamp. If the context doesn't contain enough information to answer the question, say so politely."""
+Please provide a helpful answer based on the context above. If you reference specific information, mention the approximate reference (e.g., timestamp or chunk). If the context doesn't contain enough information to answer the question, say so politely."""
         
         response = client.models.generate_content(
             model='gemini-2.5-flash-lite',
@@ -729,6 +754,18 @@ def health():
     """Health check endpoint"""
     return jsonify({'status': 'healthy'})
 
+
+@app.route('/')
+def index():
+    return send_from_directory('.', 'index.html')
+
+@app.route('/script.js')
+def serve_script():
+    return send_from_directory('.', 'script.js')
+
+@app.route('/style.css')
+def serve_style():
+    return send_from_directory('.', 'style.css')
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

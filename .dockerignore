@@ -1,0 +1,6 @@
+.env
+.git
+__pycache__
+chroma_db/
+uploads/
+registry.json

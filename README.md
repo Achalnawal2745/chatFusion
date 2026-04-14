@@ -1,23 +1,50 @@
+---
+title: ChatFusion
+emoji: ⚡
+colorFrom: purple
+colorTo: blue
+sdk: docker
+pinned: false
+short_description: Multi-source RAG workspace
+---
+
 # ⚡ ChatFusion
 
-An AI-powered chat application that lets you have intelligent conversations about YouTube videos and PDF documents using Retrieval Augmented Generation (RAG) with **local embeddings** for blazing-fast performance.
+An AI-powered **Knowledge Workspace** that lets you have intelligent conversations with — and **combine knowledge from** — YouTube videos and PDF documents. Built on Retrieval Augmented Generation (RAG) with local embeddings for blazing-fast performance and a stunning glassmorphism UI.
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![Flask](https://img.shields.io/badge/Flask-3.0+-green.svg)
-![Gemini](https://img.shields.io/badge/Gemini-API-orange.svg)
+![Gemini](https://img.shields.io/badge/Gemini-Flash%20Lite-orange.svg)
 ![Sentence-Transformers](https://img.shields.io/badge/Sentence--Transformers-Local-green.svg)
+![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.0-38bdf8.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 ## ✨ Features
 
-- 🎥 **YouTube Videos** - Extract and analyze video transcripts
-- 📄 **PDF Documents** - Upload and chat with PDF content
-- ⚡ **Local Embeddings** - 10x faster processing with Sentence Transformers
-- 🧠 **RAG Technology** - Uses ChromaDB for intelligent context retrieval
-- 💬 **Natural Language Q&A** - Ask questions in plain language
-- 🌍 **Multi-language Support** - Works with Hindi, English, and other languages
-- 🚀 **No Rate Limits** - Process unlimited content instantly
-- 🎨 **Modern UI** - Beautiful, responsive interface with dark/light mode
+- 🎥 **YouTube Videos** — Extract and analyze video transcripts automatically
+- 📄 **PDF Documents** — Upload and query any PDF document
+- 🧠 **Knowledge Workspaces** — Merge multiple documents (PDFs + Videos) into a unified AI brain and chat across all of them at once
+- ⚡ **Local Embeddings** — 10x faster processing with Sentence Transformers, no embedding API costs
+- 🔍 **RAG Technology** — ChromaDB vector database for intelligent, precise context retrieval
+- 💬 **Multi-source Synthesis** — AI seamlessly weaves knowledge from all merged sources to answer questions comprehensively
+- 📊 **Source Attribution** — Every AI answer shows exactly which documents and chunks were used
+- 🌍 **Multi-language Support** — Works with Hindi, English, and other languages
+- 🎨 **Glassmorphism UI** — Premium dark-mode interface with neon purple/cyan accents designed with Stitch
+- 💾 **Persistent Storage** — All documents and workspaces survive server restarts via `registry.json`
+
+## 🆕 What's New: Knowledge Workspaces
+
+The standout feature of ChatFusion is **Knowledge Workspaces** — a multi-source synthesis engine.
+
+**Scenario**: You have a PDF tutorial and a YouTube lecture on the same topic. Instead of chatting with each one separately, you can:
+1. Create a **Workspace** that merges both documents.
+2. Ask any question — the AI synthesizes a unified, comprehensive answer drawing from both sources at once.
+3. Results include a **Sources Used** panel showing exactly which document contributed which knowledge.
+
+**Example queries that work beautifully across merged sources:**
+- "Solve Question 6 from the tutorial using steps from the video explanation."
+- "What is the theory from the PDF, and how does the video's approach apply to it?"
+- "Give me a combined summary of both resources."
 
 ## 🚀 Quick Start
 
@@ -63,77 +90,79 @@ An AI-powered chat application that lets you have intelligent conversations abou
    * Running on http://127.0.0.1:5000
    ```
 
-2. **Open the frontend**
+2. **Open your browser**
    
-   Double-click `index.html` or open it in your browser
+   Navigate to [http://localhost:5000](http://localhost:5000) — the Flask server directly serves the frontend.
 
 3. **Start using ChatFusion!**
-   - **YouTube**: Paste a video URL, click "Process Video"
-   - **PDF**: Upload a PDF file
-   - Switch between documents in "My Documents" tab
-   - Ask questions and get AI-powered answers!
+   - Click **+ Add Document** to process a YouTube URL or upload a PDF.
+   - Your documents appear instantly in the left sidebar — click any to start chatting.
+   - Click the **+** icon next to "Workspaces" to merge multiple documents into a unified Knowledge Workspace.
 
 ## 📖 How It Works
 
-### YouTube Videos
+### Single Document Chat
 ```
-YouTube URL → Transcript Extraction → Text Chunking → 
-Local Embeddings → ChromaDB Storage → Chat Interface
-```
-
-### PDF Documents
-```
-PDF Upload → Text Extraction → Text Chunking → 
-Local Embeddings → ChromaDB Storage → Chat Interface
+YouTube URL / PDF Upload → Text Extraction → Chunking
+→ Local Embeddings → ChromaDB Storage → Chat Interface
 ```
 
-### Chat Process
+### Knowledge Workspace (Multi-source)
 ```
-User Question → Local Embedding → Similarity Search → 
-Context Retrieval → Gemini AI → Answer
+Select Documents → Instant Merge (re-uses existing embeddings)
+→ Combined Collection → User Query → Parallel Retrieval from all sources
+→ Gemini Synthesis Engine → Unified Answer with Source Attribution
 ```
 
-**Key Steps:**
+### The Synthesis Protocol
+When chatting with a Workspace, a specialized prompt instructs Gemini to:
+1. Treat all sources as a single unified knowledge base.
+2. Seamlessly blend and cross-reference information across documents.
+3. Be comprehensive — never artificially shorten or suppress valuable detail.
+4. Organically attribute sources within the narrative (not just list them).
+5. Handle simple greetings conversationally, not with full document summaries.
+
+**Key Technical Steps:**
 1. **Content Processing**: Extract text from videos (transcripts) or PDFs
-2. **Chunking**: Split into manageable segments with overlap
-3. **Local Embeddings**: Convert to vectors using `all-MiniLM-L6-v2` (instant!)
-4. **Storage**: Store in ChromaDB (`chroma_db/` folder)
-5. **Query**: Embed questions locally and find relevant segments
-6. **Response**: Gemini generates answers from retrieved context
+2. **Chunking**: Split into segments with overlap (configurable)
+3. **Local Embeddings**: Convert to vectors using `all-MiniLM-L6-v2` (instant, free)
+4. **Storage**: ChromaDB (`chroma_db/` folder) + `registry.json` for metadata persistence
+5. **Query**: Embed user question locally → find relevant chunks across all collections
+6. **Response**: `gemini-2.5-flash-lite` generates answers from retrieved context
 
 ## ⚡ Performance
 
 ### Processing Speed
 
-| Video Length | Processing Time | Chunks |
-|--------------|-----------------|--------|
-| 5 minutes    | ~15 seconds     | 10-12  |
-| 10 minutes   | ~30 seconds     | 15-20  |
-| 20 minutes   | ~60 seconds     | 30-40  |
-| 30 minutes   | ~90 seconds     | 45-60  |
+| Content | Processing Time | Chunks |
+|---------|-----------------|--------|
+| 5-min video | ~15s | 10–12 |
+| 20-min video | ~60s | 30–40 |
+| 10-page PDF | ~10s | 15–20 |
+| Workspace creation | ~instant | merged |
 
-**10x faster** than API-based embeddings with no rate limits!
+**10x faster** than API-based embeddings with no rate limits on processing!
 
 ## 🎯 Usage Tips
 
-### Choosing Videos
-- ✅ Videos with auto-generated or manual captions
-- ✅ Educational content, tutorials, talks
-- ✅ Any length (now fast enough for long videos!)
-- ❌ Avoid videos without captions
+### Adding Content
+- ✅ YouTube videos with auto-generated or manual captions
+- ✅ PDF documents (text-based; scanned PDFs may have limited extraction)
+- ✅ Multiple documents of different types — mix freely in one Workspace
+- ❌ Videos without any captions (no transcript = no content)
 
 ### Asking Questions
-- Be specific: "What does the speaker say about X?"
-- Reference topics: "Explain the concept mentioned at the beginning"
-- Request summaries: "Summarize the main points"
-- Ask for timestamps: "When is Y discussed?"
+- **Specific Questions**: "Explain NFA epsilon transitions" → precise answer from the right chunks.
+- **Cross-source**: "Using the video's method, solve Question 6 from the PDF."
+- **Summaries**: "Give me a combined overview of both documents."
+- **Calculations / Proofs**: The AI will reproduce full step-by-step working — it won't skip steps.
 
 ## 🌍 Language Support
 
 The app supports multiple languages with this priority:
-1. **Hindi** (`hi`) - Tried first
-2. **English** (`en`) - Fallback
-3. **Any available** - Uses whatever transcript exists
+1. **Hindi** (`hi`) — Tried first
+2. **English** (`en`) — Fallback
+3. **Any available** — Uses whatever transcript exists
 
 You can ask questions in any language, and Gemini will respond accordingly!
 
@@ -149,10 +178,18 @@ You can ask questions in any language, and Gemini will respond accordingly!
 
 ### Chat Model
 
-**Model**: `gemini-2.5-flash` (Google Gemini)
-- **Rate Limit**: 10 requests per minute (free tier)
-- **Quality**: State-of-the-art language generation
-- **Usage**: Only for chat responses (not embeddings)
+**Model**: `gemini-2.5-flash-lite` (Google Gemini)
+- Used for both single-document chat and multi-source workspace synthesis
+- **Free tier rate limit**: ~15 requests per minute
+- **Usage**: Chat responses only — embeddings are fully local
+
+### Persistence
+
+| Data | Storage |
+|------|---------|
+| Document vectors | `chroma_db/` (ChromaDB) |
+| Document + workspace metadata | `registry.json` (auto-created) |
+| Chat history per session | Browser `localStorage` |
 
 ### Environment Variables
 
@@ -166,6 +203,10 @@ GEMINI_API_KEY=your_gemini_api_key_here
 ### "No transcript found"
 - **Cause**: Video doesn't have captions
 - **Solution**: Try a different video with captions enabled
+
+### "503 UNAVAILABLE" from Gemini
+- **Cause**: Temporary high load on Gemini's servers (free tier)
+- **Solution**: Wait a few seconds and retry — the UI will show a friendly error message
 
 ### Model download fails
 - **Cause**: Network issues or disk space
@@ -190,92 +231,122 @@ lsof -ti:5000 | xargs kill -9
 
 ```
 chatfusion/
-├── app.py              # Flask backend with RAG logic
-├── index.html          # Frontend interface
-├── style.css           # UI styling  
-├── script.js           # Frontend logic
+├── app.py              # Flask backend: RAG logic, workspace endpoints, registry persistence
+├── index.html          # Frontend — glassmorphism UI (Tailwind CSS, Stitch-generated)
+├── script.js           # Frontend JS: sidebar, modals, chat rendering, API calls
+├── registry.json       # Persistent metadata for docs & workspaces (auto-created)
 ├── requirements.txt    # Python dependencies
 ├── .env               # API key (create this)
 ├── .env.example       # Template for .env
 ├── .gitignore         # Git ignore rules
 ├── chroma_db/         # Vector database (auto-created)
 ├── uploads/           # Temporary PDF storage (auto-created)
-├── QUICKSTART.md      # Quick start guide
 └── README.md          # Full documentation
 ```
+
+> `style.css` has been superseded by Tailwind CSS embedded in `index.html`.
+> `download.py` and `build_index.py` are utility scripts used during UI generation — not needed at runtime.
 
 ## 🔒 Security & Privacy
 
 - ✅ `.env` file is gitignored (API key protected)
-- ✅ **Transcripts processed locally** (never sent to Gemini for embeddings)
-- ✅ Only chat context sent to Gemini API
+- ✅ **Embeddings processed locally** (transcripts/PDFs never sent to Gemini)
+- ✅ Only retrieved context chunks sent to Gemini for chat responses
 - ✅ CORS enabled for local development
 - ⚠️ For production: restrict CORS, use HTTPS, add authentication
+- ⚠️ Free tier Gemini may use submitted data for model improvement
 
 ## 🛠️ Technologies Used
 
-- **Backend**: Flask (Python)
-- **Embeddings**: Sentence Transformers (Local)
-- **Vector Database**: ChromaDB
-- **AI Chat**: Google Gemini API
-- **Transcript**: youtube-transcript-api
-- **Frontend**: Vanilla HTML/CSS/JavaScript
+| Component | Technology |
+|-----------|-----------|
+| Backend | Flask (Python) |
+| Embeddings | Sentence Transformers (`all-MiniLM-L6-v2`) — Local |
+| Vector Database | ChromaDB |
+| AI Chat & Synthesis | Google Gemini API (`gemini-2.5-flash-lite`) |
+| Transcript API | youtube-transcript-api |
+| Frontend | Tailwind CSS (via CDN), Vanilla JS |
+| UI Design System | Stitch (Google) — "Aether Glass" dark theme |
+| Fonts | Space Grotesk + Inter (Google Fonts) |
 
 ## 📊 API Endpoints
 
 ### `POST /api/process-video`
-Process a YouTube video and create embeddings
+Process a YouTube video and create embeddings.
 ```json
-{
-  "url": "https://www.youtube.com/watch?v=..."
-}
+{ "url": "https://www.youtube.com/watch?v=..." }
 ```
+
+### `POST /api/process-pdf`
+Upload and process a PDF file (multipart/form-data).
+
+### `GET /api/documents`
+Returns all processed documents with metadata.
+
+### `DELETE /api/document/<id>`
+Deletes a document and its embeddings.
 
 ### `POST /api/chat`
-Ask a question about the processed video
+Chat with a single document.
 ```json
-{
-  "video_id": "video_id",
-  "question": "What is this video about?"
-}
+{ "document_id": "...", "question": "What is this about?" }
 ```
 
+### `POST /api/workspace/create`
+Create a new Knowledge Workspace from existing documents.
+```json
+{ "name": "My Study Brain", "document_ids": ["id1", "id2"] }
+```
+
+### `POST /api/workspace/chat`
+Chat with a merged Knowledge Workspace.
+```json
+{ "workspace_id": "...", "question": "Synthesize both sources on NFA." }
+```
+
+### `GET /api/workspaces`
+Returns all workspaces with metadata.
+
+### `DELETE /api/workspace/<id>`
+Deletes a workspace (original documents are preserved).
+
 ### `GET /api/health`
-Health check endpoint
+Health check endpoint.
 
 ## 🎨 UI Features
 
-- Modern dark theme with purple gradients
-- Glassmorphism effects
-- Smooth animations and transitions
-- Responsive design (mobile + desktop)
-- Typing indicators
-- Word-wrapped messages with proper formatting
-- User-friendly error messages
+- ✨ Premium glassmorphism dark mode with purple/cyan neon accents
+- 📌 Persistent left sidebar with instant document & workspace switching
+- 🗂️ Animated modals for adding documents and creating workspaces
+- 💬 Styled chat bubbles with AI identity header ("Synthesizing Intelligence")
+- 📊 Expandable "Sources Used" pills under workspace AI responses
+- 📱 Responsive — collapsible sidebar with slide-in overlay on mobile
+- 🔄 Persistent chat history per document via `localStorage`
+- ⌨️ Enter key to send messages
 
 ## 📈 Future Enhancements
 
-- [ ] Video metadata display (title, thumbnail)
-- [ ] Chat history export
-- [ ] Multi-video support with switcher
-- [ ] Auto-generated summaries
-- [ ] Clickable timestamps
-- [ ] Dark/Light mode toggle
-- [ ] Database cleanup options
+- [ ] Chat history export to Markdown or PDF
+- [ ] OCR support for scanned (image-based) PDFs
+- [ ] Document-level weightings in workspaces (prioritize specific sources)
+- [ ] Auto-generated summaries on document upload
+- [ ] Clickable timestamps in YouTube answers
+- [ ] Workspace editing (add/remove documents post-creation)
+- [ ] Move to paid Gemini tier to eliminate rate-limit interruptions
 
 ## 💡 Why Local Embeddings?
 
 ### Benefits over API-based embeddings:
-- ⚡ **10x faster** - No network latency or rate limits
-- 💰 **Free forever** - No API costs for embeddings
-- 🔒 **More private** - Data stays on your machine
-- 🌐 **Works offline** - After initial model download
-- ∞ **Unlimited** - Process as many videos as you want
+- ⚡ **10x faster** — No network latency or rate limits
+- 💰 **Free forever** — No API costs for embeddings
+- 🔒 **More private** — Your content stays on your machine
+- 🌐 **Works offline** — After initial model download
+- ∞ **Unlimited** — Process as many documents as you want
 
 ### Trade-offs:
-- 📦 ~90MB model download (one-time)
+- 📦 ~90MB model download (one-time, automatic)
 - 💻 ~500MB RAM usage
-- 🎯 Slightly lower quality than Gemini embeddings (but still excellent!)
+- 🎯 Slightly lower quality than Gemini embeddings (still excellent for RAG!)
 
 ## 🤝 Contributing
 
@@ -284,28 +355,12 @@ Contributions are welcome! Feel free to:
 - Suggest features
 - Submit pull requests
 
-## 💡 Tips for Best Results
-
-1. **First run**: Wait for model download (~90MB)
-2. **Check captions**: Verify the video has captions on YouTube
-3. **Ask specific questions**: Better questions = better answers
-4. **Use timestamps**: Reference specific parts of the video
-5. **Try different languages**: Works with Hindi, English, and more!
-
-## 📞 Support
-
-If you encounter issues:
-1. Check the troubleshooting section
-2. Verify your API key is valid
-3. Ensure the video has captions
-4. Check terminal output for detailed errors
-
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
 ---
 
-**Made with ❤️ using Sentence Transformers & Google Gemini AI**
+**Made with ❤️ using Sentence Transformers, Google Gemini AI & Stitch**
 
 **Star ⭐ this project if you find it useful!**

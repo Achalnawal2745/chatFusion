@@ -9,13 +9,58 @@
             "chunks_count": 236,
             "created_at": "2026-04-14T11:38:53.298436"
         },
-        "pdf_94fe987c": {
-            "id": "pdf_94fe987c",
+        "pdf_8cf6c465": {
+            "id": "pdf_8cf6c465",
             "type": "pdf",
             "name": "Tutorial_5.pdf",
-            "collection_name": "pdf_94fe987c",
+            "collection_name": "pdf_8cf6c465",
             "chunks_count": 1,
-            "created_at": "2026-04-14T11:39:00.764853"
+            "created_at": "2026-04-14T14:43:02.015185"
+        },
+        "youtube_WJ-UaAaumNA": {
+            "id": "youtube_WJ-UaAaumNA",
+            "type": "youtube",
+            "name": "YouTube Video (WJ-UaAau...)",
+            "video_id": "WJ-UaAaumNA",
+            "collection_name": "video_WJ-UaAaumNA",
+            "chunks_count": 6,
+            "created_at": "2026-04-14T21:04:48.984959"
+        },
+        "youtube_povNcHSasgs": {
+            "id": "youtube_povNcHSasgs",
+            "type": "youtube",
+            "name": "YouTube Video (povNcHSa...)",
+            "video_id": "povNcHSasgs",
+            "collection_name": "video_povNcHSasgs",
+            "chunks_count": 4,
+            "created_at": "2026-04-14T21:05:20.740462"
+        },
+        "youtube_3MqyDWDpZoI": {
+            "id": "youtube_3MqyDWDpZoI",
+            "type": "youtube",
+            "name": "YouTube Video (3MqyDWDp...)",
+            "video_id": "3MqyDWDpZoI",
+            "collection_name": "video_3MqyDWDpZoI",
+            "chunks_count": 3,
+            "created_at": "2026-04-14T21:06:04.906523"
+        },
+        "youtube_qJ9hR4qq08Q": {
+            "id": "youtube_qJ9hR4qq08Q",
+            "type": "youtube",
+            "name": "YouTube Video (qJ9hR4qq...)",
+            "video_id": "qJ9hR4qq08Q",
+            "collection_name": "video_qJ9hR4qq08Q",
+            "chunks_count": 5,
+            "created_at": "2026-04-14T21:24:41.413467"
+        },
+        "youtube_auGSuMwHv5c": {
+            "id": "youtube_auGSuMwHv5c",
+            "type": "youtube",
+            "name": "YouTube Video (auGSuMwH...)",
+            "video_id": "auGSuMwHv5c",
+            "collection_name": "video_auGSuMwHv5c",
+            "chunks_count": 12,
+            "created_at": "2026-04-14T23:17:13.105443"
         }
     },
     "workspaces": {
@@ -29,6 +74,18 @@
             "merged_collection": "workspace_merged_ws_1220e0ed",
             "total_chunks": 237,
             "created_at": "2026-04-14T11:39:33.319934"
+        },
+        "ws_d87fbf6d": {
+            "id": "ws_d87fbf6d",
+            "name": "os",
+            "document_ids": [
+                "youtube_WJ-UaAaumNA",
+                "youtube_povNcHSasgs",
+                "youtube_3MqyDWDpZoI"
+            ],
+            "merged_collection": "workspace_merged_ws_d87fbf6d",
+            "total_chunks": 13,
+            "created_at": "2026-04-14T21:06:23.599614"
         }
     }
 }
