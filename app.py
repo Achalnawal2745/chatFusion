@@ -1,3 +1,9 @@
+import os
+
+# Suppress TensorFlow warnings and info messages
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # 0=all, 1=filter INFO, 2=filter WARNING, 3=filter ERROR
+
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from youtube_transcript_api import YouTubeTranscriptApi
