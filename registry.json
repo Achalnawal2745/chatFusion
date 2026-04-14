@@ -1,0 +1,34 @@
+{
+    "documents": {
+        "youtube_9kuynHcM3UA": {
+            "id": "youtube_9kuynHcM3UA",
+            "type": "youtube",
+            "name": "YouTube Video (9kuynHcM...)",
+            "video_id": "9kuynHcM3UA",
+            "collection_name": "video_9kuynHcM3UA",
+            "chunks_count": 236,
+            "created_at": "2026-04-14T11:38:53.298436"
+        },
+        "pdf_94fe987c": {
+            "id": "pdf_94fe987c",
+            "type": "pdf",
+            "name": "Tutorial_5.pdf",
+            "collection_name": "pdf_94fe987c",
+            "chunks_count": 1,
+            "created_at": "2026-04-14T11:39:00.764853"
+        }
+    },
+    "workspaces": {
+        "ws_1220e0ed": {
+            "id": "ws_1220e0ed",
+            "name": "edfeqd",
+            "document_ids": [
+                "youtube_9kuynHcM3UA",
+                "pdf_94fe987c"
+            ],
+            "merged_collection": "workspace_merged_ws_1220e0ed",
+            "total_chunks": 237,
+            "created_at": "2026-04-14T11:39:33.319934"
+        }
+    }
+}

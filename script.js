@@ -3,7 +3,9 @@ const API_BASE_URL = 'http://localhost:5000/api';
 
 // State
 let currentDocumentId = null;
+let currentWorkspaceId = null;
 let documents = [];
+let workspaces = [];
 
 // DOM Elements
 const tabs = document.querySelectorAll('.tab-btn');
@@ -24,6 +26,17 @@ const newDocBtn = document.getElementById('newDocBtn');
 const currentDocName = document.getElementById('currentDocName');
 const docCount = document.getElementById('doc-count');
 
+// Workspace DOM
+const workspacesList = document.getElementById('workspacesList');
+const createWorkspaceBtn = document.getElementById('createWorkspaceBtn');
+const workspaceModal = document.getElementById('workspaceModal');
+const closeWorkspaceModal = document.getElementById('closeWorkspaceModal');
+const cancelWorkspaceBtn = document.getElementById('cancelWorkspaceBtn');
+const confirmCreateWorkspaceBtn = document.getElementById('confirmCreateWorkspaceBtn');
+const workspaceNameInput = document.getElementById('workspaceNameInput');
+const workspaceDocsList = document.getElementById('workspaceDocsList');
+const workspaceCreateStatus = document.getElementById('workspaceCreateStatus');
+
 // Tab Switching
 tabs.forEach(tab => {
     tab.addEventListener('click', () => {
@@ -40,6 +53,8 @@ tabs.forEach(tab => {
         // Load documents if documents tab
         if (tabName === 'documents') {
             loadDocuments();
+        } else if (tabName === 'workspaces') {
+            loadWorkspaces();
         }
     });
 });
@@ -186,11 +201,137 @@ function renderDocuments() {
     `).join('');
 }
 
+// Workspace Logic
+createWorkspaceBtn.addEventListener('click', () => {
+    workspaceModal.style.display = 'block';
+    populateWorkspaceDocSelector();
+    workspaceNameInput.value = '';
+    workspaceCreateStatus.textContent = '';
+    workspaceCreateStatus.className = 'status-message';
+});
+
+function closeWorkspaceModalFn() {
+    workspaceModal.style.display = 'none';
+}
+closeWorkspaceModal.addEventListener('click', closeWorkspaceModalFn);
+cancelWorkspaceBtn.addEventListener('click', closeWorkspaceModalFn);
+
+window.addEventListener('click', (e) => {
+    if (e.target === workspaceModal) closeWorkspaceModalFn();
+});
+
+function populateWorkspaceDocSelector() {
+    if (documents.length < 2) {
+        workspaceDocsList.innerHTML = '<p class="empty-state" style="padding: 10px;">You need at least 2 processed documents to create a workspace.</p>';
+        confirmCreateWorkspaceBtn.disabled = true;
+        return;
+    }
+    
+    confirmCreateWorkspaceBtn.disabled = false;
+    workspaceDocsList.innerHTML = documents.map(doc => `
+        <div class="doc-select-item">
+            <input type="checkbox" id="ws_doc_${doc.id}" value="${doc.id}">
+            <label for="ws_doc_${doc.id}">
+                ${doc.type === 'youtube' ? '🎥' : '📄'} ${doc.name} 
+                <small style="color: var(--text-secondary); margin-left: 10px;">(${doc.chunks_count} chunks)</small>
+            </label>
+        </div>
+    `).join('');
+}
+
+confirmCreateWorkspaceBtn.addEventListener('click', async () => {
+    const name = workspaceNameInput.value.trim();
+    if (!name) {
+        showStatus(workspaceCreateStatus, 'Please enter a workspace name', 'error');
+        return;
+    }
+    
+    const selectedCheckboxes = workspaceDocsList.querySelectorAll('input[type="checkbox"]:checked');
+    if (selectedCheckboxes.length < 2) {
+        showStatus(workspaceCreateStatus, 'Please select at least 2 documents', 'error');
+        return;
+    }
+    
+    const documentIds = Array.from(selectedCheckboxes).map(cb => cb.value);
+    
+    confirmCreateWorkspaceBtn.disabled = true;
+    confirmCreateWorkspaceBtn.querySelector('.btn-text').style.display = 'none';
+    confirmCreateWorkspaceBtn.querySelector('.btn-loader').style.display = 'inline';
+    showStatus(workspaceCreateStatus, 'Merging documents... (This is instant!)', 'info');
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/workspace/create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, document_ids: documentIds })
+        });
+        
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to create workspace');
+        
+        showStatus(workspaceCreateStatus, '✓ Workspace created successfully!', 'success');
+        
+        setTimeout(() => {
+            closeWorkspaceModalFn();
+            loadWorkspaces();
+        }, 1000);
+        
+    } catch (error) {
+        showStatus(workspaceCreateStatus, `Error: ${error.message}`, 'error');
+    } finally {
+        confirmCreateWorkspaceBtn.disabled = false;
+        confirmCreateWorkspaceBtn.querySelector('.btn-text').style.display = 'inline';
+        confirmCreateWorkspaceBtn.querySelector('.btn-loader').style.display = 'none';
+    }
+});
+
+async function loadWorkspaces() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/workspaces`);
+        const data = await response.json();
+        if (data.success) {
+            workspaces = data.workspaces;
+            renderWorkspaces();
+        }
+    } catch (error) {
+        console.error('Error loading workspaces:', error);
+    }
+}
+
+function renderWorkspaces() {
+    if (workspaces.length === 0) {
+        workspacesList.innerHTML = '<p class="empty-state">No workspaces created yet. A workspace lets you merge multiple documents into one unified brain!</p>';
+        return;
+    }
+    
+    workspacesList.innerHTML = workspaces.map(ws => `
+        <div class="doc-card ${ws.id === currentWorkspaceId ? 'selected' : ''}" 
+             onclick="selectWorkspace('${ws.id}', '${ws.name}')">
+            <span class="doc-type" style="background: #764ba2; color: white;">🧠 Workspace</span>
+            <h4>${ws.name}</h4>
+            <p>${ws.document_ids.length} docs • ${ws.total_chunks} chunks</p>
+            <small>Merged Knowledge Space</small>
+            <button class="btn btn-small" onclick="event.stopPropagation(); deleteWorkspace('${ws.id}')" 
+                    style="margin-top: 10px; background: #ff4444; color: white;">Delete</button>
+        </div>
+    `).join('');
+}
+
 // Make functions globally accessible for onclick handlers
 window.selectDocument = function (docId, docName) {
     currentDocumentId = docId;
-    showChat(docId, docName);
+    currentWorkspaceId = null;
+    showChat(docId, docName, false);
     renderDocuments();
+    renderWorkspaces();
+}
+
+window.selectWorkspace = function (wsId, wsName) {
+    currentWorkspaceId = wsId;
+    currentDocumentId = null;
+    showChat(wsId, wsName, true);
+    renderDocuments();
+    renderWorkspaces();
 }
 
 window.deleteDocument = async function (docId) {
@@ -213,14 +354,35 @@ window.deleteDocument = async function (docId) {
     }
 }
 
+window.deleteWorkspace = async function (wsId) {
+    if (!confirm('Delete this workspace? (Original documents won\'t be affected)')) return;
+    try {
+        const response = await fetch(`${API_BASE_URL}/workspace/${wsId}`, {
+            method: 'DELETE'
+        });
+        if (response.ok) {
+            if (currentWorkspaceId === wsId) {
+                currentWorkspaceId = null;
+                chatSection.style.display = 'none';
+            }
+            loadWorkspaces();
+        }
+    } catch (error) {
+        console.error('Error deleting workspace:', error);
+    }
+}
+
 // Chat Functions
-function showChat(docId, docName) {
-    currentDocumentId = docId;
-    currentDocName.textContent = docName;
+function showChat(id, name, isWorkspace) {
+    if (isWorkspace) {
+        currentDocName.innerHTML = `🧠 <span style="margin-left:8px;">${name} (Merged Brain)</span>`;
+    } else {
+        currentDocName.innerHTML = `📄 <span style="margin-left:8px;">${name}</span>`;
+    }
     chatSection.style.display = 'flex';
 
-    // Load chat history for this document
-    const chatHistory = loadChatHistory(docId);
+    // Load chat history for this document/workspace
+    const chatHistory = loadChatHistory(id);
 
     if (chatHistory && chatHistory.length > 0) {
         // Restore previous chat
@@ -279,7 +441,7 @@ chatInput.addEventListener('keypress', (e) => {
 
 async function sendMessage() {
     const question = chatInput.value.trim();
-    if (!question || !currentDocumentId) return;
+    if (!question || (!currentDocumentId && !currentWorkspaceId)) return;
 
     addMessage(question, 'user');
     chatInput.value = '';
@@ -287,13 +449,20 @@ async function sendMessage() {
     const typingId = addTypingIndicator();
 
     try {
-        const response = await fetch(`${API_BASE_URL}/chat`, {
+        let endpoint = `${API_BASE_URL}/chat`;
+        let payload = { question: question };
+
+        if (currentWorkspaceId) {
+            endpoint = `${API_BASE_URL}/workspace/chat`;
+            payload.workspace_id = currentWorkspaceId;
+        } else {
+            payload.document_id = currentDocumentId;
+        }
+
+        const response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                document_id: currentDocumentId,
-                question: question
-            })
+            body: JSON.stringify(payload)
         });
 
         const data = await response.json();
@@ -304,6 +473,21 @@ async function sendMessage() {
         }
 
         addMessage(data.answer, 'ai');
+
+        if (currentWorkspaceId && data.sources_used && data.sources_used.length > 0) {
+            const lastMsg = chatMessages.lastElementChild.querySelector('.message-content');
+            if (lastMsg) {
+                const panel = document.createElement('div');
+                panel.className = 'sources-used-panel';
+                panel.innerHTML = `
+                    <h4>📊 Knowledge Used from:</h4>
+                    <ul style="list-style-type: none; margin-left: 5px;">
+                        ${data.sources_used.map(s => `<li style="margin-bottom: 3px;">${s.type === 'pdf' ? '📄' : '🎥'} ${s.name} <span style="color:var(--text-secondary);font-size:0.8rem">(${s.chunks_used} matching chunks)</span></li>`).join('')}
+                    </ul>
+                `;
+                lastMsg.appendChild(panel);
+            }
+        }
 
     } catch (error) {
         removeTypingIndicator(typingId);
@@ -337,8 +521,9 @@ function addMessage(text, sender, saveToHistory = true) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
     // Save to localStorage
-    if (saveToHistory && currentDocumentId) {
-        saveChatHistory(currentDocumentId, text, sender);
+    const activeId = currentWorkspaceId || currentDocumentId;
+    if (saveToHistory && activeId) {
+        saveChatHistory(activeId, text, sender);
     }
 }
 
@@ -375,6 +560,7 @@ function showStatus(element, message, type) {
 
 newDocBtn.addEventListener('click', () => {
     currentDocumentId = null;
+    currentWorkspaceId = null;
     chatSection.style.display = 'none';
     tabs[0].click(); // Go to YouTube tab
 });
@@ -382,10 +568,11 @@ newDocBtn.addEventListener('click', () => {
 // Clear chat button
 const clearChatBtn = document.getElementById('clearChatBtn');
 clearChatBtn.addEventListener('click', () => {
-    if (!currentDocumentId) return;
+    const activeId = currentWorkspaceId || currentDocumentId;
+    if (!activeId) return;
 
-    if (confirm('Clear chat history for this document?')) {
-        clearChatHistory(currentDocumentId);
+    if (confirm('Clear chat history?')) {
+        clearChatHistory(activeId);
         chatMessages.innerHTML = `
             <div class="welcome-message">
                 <div class="welcome-icon">💬</div>
@@ -396,8 +583,9 @@ clearChatBtn.addEventListener('click', () => {
     }
 });
 
-// Load documents on page load
+// Load documents and workspaces on page load
 loadDocuments();
+loadWorkspaces();
 
 // Theme Toggle
 const themeToggle = document.getElementById('themeToggle');

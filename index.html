@@ -34,6 +34,9 @@
             <button class="tab-btn documents-btn" data-tab="documents">
                 📚 My Documents (<span id="doc-count">0</span>)
             </button>
+            <button class="tab-btn workspace-btn" data-tab="workspaces">
+                🧠 Knowledge Workspaces
+            </button>
         </div>
 
         <!-- Tab Content -->
@@ -77,6 +80,19 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Workspaces Tab -->
+            <div id="workspaces-tab" class="tab-pane">
+                <div class="workspace-section">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3>🧠 Knowledge Workspaces</h3>
+                        <button id="createWorkspaceBtn" class="btn btn-primary" style="padding: 8px 16px; font-size: 0.9rem;">+ Create New Workspace</button>
+                    </div>
+                    <div id="workspacesList" class="docs-grid">
+                        <p class="empty-state">No workspaces created yet. A workspace lets you merge multiple documents into one unified brain!</p>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Chat Section -->
@@ -105,6 +121,36 @@
                 <textarea id="chatInput" placeholder="Ask a question about the document..." rows="2"></textarea>
                 <button id="sendBtn" class="btn btn-primary">
                     <span>Send</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Workspace Modal -->
+    <div id="workspaceModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" id="closeWorkspaceModal">&times;</span>
+            <h2 style="margin-bottom: 10px;">🧠 Create Knowledge Workspace</h2>
+            <p style="margin-bottom: 20px; color: var(--text-secondary); font-size: 0.9rem;">Combine multiple documents into one unified AI brain. Every question will be answered using the combined knowledge of all selected documents.</p>
+            
+            <div class="input-group" style="margin-bottom: 20px;">
+                <input type="text" id="workspaceNameInput" placeholder="Workspace Name (e.g. Deep Learning Study)" style="width: 100%;" />
+            </div>
+            
+            <div class="workspace-docs-selection">
+                <h4 style="margin-bottom: 10px;">Select documents to merge (at least 2):</h4>
+                <div id="workspaceDocsList" class="docs-selection-list">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+            
+            <div id="workspaceCreateStatus" class="status-message"></div>
+            
+            <div style="margin-top: 25px; text-align: right;">
+                <button id="cancelWorkspaceBtn" class="btn btn-secondary">Cancel</button>
+                <button id="confirmCreateWorkspaceBtn" class="btn btn-primary" style="margin-left: 10px;">
+                    <span class="btn-text">Create Workspace</span>
+                    <span class="btn-loader" style="display: none;">⏳ Creating...</span>
                 </button>
             </div>
         </div>

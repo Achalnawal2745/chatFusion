@@ -54,8 +54,38 @@ if not os.path.exists(UPLOAD_FOLDER):
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
 
+import json
+
+REGISTRY_FILE = 'registry.json'
+
 # Unified document registry (videos + PDFs)
 documents_registry = {}
+
+# Knowledge workspaces registry
+workspaces = {}
+
+def load_registry():
+    global documents_registry, workspaces
+    if os.path.exists(REGISTRY_FILE):
+        try:
+            with open(REGISTRY_FILE, 'r') as f:
+                data = json.load(f)
+                documents_registry = data.get('documents', {})
+                workspaces = data.get('workspaces', {})
+        except Exception as e:
+            print(f"Error loading registry: {e}")
+
+def save_registry():
+    try:
+        with open(REGISTRY_FILE, 'w') as f:
+            json.dump({
+                'documents': documents_registry,
+                'workspaces': workspaces
+            }, f, indent=4)
+    except Exception as e:
+        print(f"Error saving registry: {e}")
+
+load_registry()
 
 
 def extract_video_id(url):
@@ -249,6 +279,7 @@ def process_video():
             'chunks_count': len(chunks),
             'created_at': datetime.now().isoformat()
         }
+        save_registry()
         
         return jsonify({
             'success': True,
@@ -334,6 +365,7 @@ def process_pdf():
                 'chunks_count': len(chunks),
                 'created_at': datetime.now().isoformat()
             }
+            save_registry()
             
             return jsonify({
                 'success': True,
@@ -408,7 +440,7 @@ User question: {question}
 Please provide a helpful answer based on the context above. If you reference specific information, mention the approximate timestamp. If the context doesn't contain enough information to answer the question, say so politely."""
         
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-2.5-flash-lite',
             contents=prompt
         )
         
@@ -431,6 +463,221 @@ Please provide a helpful answer based on the context above. If you reference spe
         error_details = traceback.format_exc()
         print(f"Chat error: {str(e)}")
         print(f"Full traceback:\n{error_details}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/workspace/create', methods=['POST'])
+def create_workspace():
+    """Create a new workspace by merging multiple documents"""
+    try:
+        data = request.json
+        name = data.get('name')
+        document_ids = data.get('document_ids')
+        
+        if not name or not document_ids or len(document_ids) < 2:
+            return jsonify({'error': 'Name and at least 2 document IDs are required'}), 400
+            
+        workspace_id = f"ws_{str(uuid.uuid4())[:8]}"
+        merged_collection_name = f"workspace_merged_{workspace_id}"
+        
+        try:
+            chroma_client.delete_collection(merged_collection_name)
+        except:
+            pass
+            
+        merged_collection = chroma_client.create_collection(merged_collection_name)
+        
+        offset = 0
+        for doc_id in document_ids:
+            if doc_id not in documents_registry:
+                continue
+                
+            doc_info = documents_registry[doc_id]
+            source_collection = chroma_client.get_collection(doc_info['collection_name'])
+            
+            all_chunks = source_collection.get(include=['documents', 'metadatas', 'embeddings'])
+            
+            if not all_chunks['documents']:
+                continue
+                
+            for i, (text, meta, embedding) in enumerate(zip(
+                all_chunks['documents'],
+                all_chunks['metadatas'],
+                all_chunks['embeddings']
+            )):
+                meta['source_doc_id'] = doc_id
+                meta['source_name'] = doc_info['name']
+                meta['source_type'] = doc_info['type']
+                
+                merged_collection.add(
+                    documents=[text],
+                    metadatas=[meta],
+                    embeddings=[embedding],
+                    ids=[f"merged_{doc_id}_{i}"]
+                )
+            
+            offset += len(all_chunks['documents'])
+            
+        workspaces[workspace_id] = {
+            'id': workspace_id,
+            'name': name,
+            'document_ids': document_ids,
+            'merged_collection': merged_collection_name,
+            'total_chunks': offset,
+            'created_at': datetime.now().isoformat()
+        }
+        save_registry()
+        
+        return jsonify({
+            'success': True, 
+            'workspace_id': workspace_id, 
+            'total_chunks': offset,
+            'message': 'Workspace created successfully'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/workspace/chat', methods=['POST'])
+def workspace_chat():
+    """Handle chat queries across the merged workspace"""
+    try:
+        data = request.json
+        workspace_id = data.get('workspace_id')
+        question = data.get('question')
+        
+        if not workspace_id or not question:
+            return jsonify({'error': 'Missing workspace_id or question'}), 400
+            
+        if workspace_id not in workspaces:
+            return jsonify({'error': 'Workspace not found'}), 404
+            
+        workspace = workspaces[workspace_id]
+        merged_collection = chroma_client.get_collection(workspace['merged_collection'])
+        
+        query_embedding = embedding_model.encode([question])[0].tolist()
+        results = merged_collection.query(
+            query_embeddings=[query_embedding],
+            n_results=8
+        )
+        
+        if not results['documents'] or not results['documents'][0]:
+            return jsonify({'success': True, 'answer': "No relevant content found in the workspace.", 'sources_used': []})
+            
+        sources_used = {}
+        for doc_text, meta in zip(results['documents'][0], results['metadatas'][0]):
+            src_id = meta.get('source_doc_id', 'unknown')
+            src_name = meta.get('source_name', 'Unknown Source')
+            src_type = meta.get('source_type', 'unknown')
+            
+            if src_id not in sources_used:
+                sources_used[src_id] = {
+                    'name': src_name,
+                    'type': src_type,
+                    'chunks': []
+                }
+                
+            if src_type == 'youtube' and 'start_time' in meta:
+                label = f"[{src_name} @ {int(meta['start_time'])}s]"
+            elif src_type == 'pdf' and 'chunk_index' in meta:
+                label = f"[{src_name}, Section {meta['chunk_index']}]"
+            else:
+                label = f"[{src_name}]"
+                
+            sources_used[src_id]['chunks'].append(f"{label}\n{doc_text}")
+            
+        context_sections = []
+        for src_id, src_data in sources_used.items():
+            section_header = f"{'📄' if src_data['type'] == 'pdf' else '🎥'} {src_data['name']}:"
+            section_content = "\n\n".join(src_data['chunks'])
+            context_sections.append(f"{section_header}\n{section_content}")
+            
+        full_context = "\n\n---\n\n".join(context_sections)
+        
+        num_sources = len(sources_used)
+        source_list = "\n".join([
+            f"- {'📄' if s['type']=='pdf' else '🎥'} {s['name']} ({s['type'].upper()})"
+            for s in sources_used.values()
+        ])
+        
+        prompt = f"""You are a highly capable Knowledge Synthesizer. Your primary objective is to deeply integrate and merge insights from a unified workspace containing multiple diverse sources.
+
+KNOWLEDGE SOURCES IN THIS WORKSPACE:
+{source_list}
+
+RELEVANT KNOWLEDGE RETRIEVED:
+{full_context}
+
+USER'S PROMPT: {question}
+
+SYNTHESIS PROTOCOL:
+1. COMPREHENSIVE MERGING: Seamlessly weave together information from all relevant sources. If a concept is explained formally in one source and practically in another, combine both perspectives to assemble a comprehensive and rich response. Do not artificially abbreviate or skip valuable details.
+2. ADAPTIVE RESPONSE: Tailor your response dynamically to the user's prompt (whether it is a general inquiry, a technical problem, a summary request, or a creative task). Leverage the totality of the merged knowledge to comprehensively fulfill the prompt.
+3. SEAMLESS ATTRIBUTION: When drawing upon specific sources, organically blend the attribution into your narrative (e.g., "Combining the theoretical framework from the document with the practical demonstration in the video..."). Do not just list what each source says separately.
+4. PROFESSIONAL CLARITY: Maintain a highly organized structure utilizing appropriate markdown (headers, bullet points, bolding) to ensure the integrated output is easily digestible.
+5. NO APOLOGIES: DO NOT output robotic disclaimers if a specific detail is missing from the retrieved context (e.g., "The video does not cover X"). Simply generate the richest, most capable response possible using the available merged knowledge.
+6. CONVERSATIONAL AWARENESS: If the user's prompt is a simple greeting (e.g., "hello", "hi", "hey"), DO NOT attempt to summarize the entire workspace. Instead, just reply conversationally with a friendly greeting and ask them what specific topic they want to explore.
+
+Provide your synthesized response below:"""
+
+        response = client.models.generate_content(
+            model='gemini-2.5-flash-lite',
+            contents=prompt
+        )
+        
+        return jsonify({
+            'success': True,
+            'answer': response.text,
+            'sources_used': [
+                {'id': k, 'name': v['name'], 'type': v['type'], 'chunks_used': len(v['chunks'])}
+                for k, v in sources_used.items()
+            ],
+            'total_chunks_searched': len(results['documents'][0])
+        })
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Workspace chat error: {str(e)}")
+        print(f"Full traceback:\n{error_details}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/workspaces', methods=['GET'])
+def list_workspaces():
+    """List all created workspaces"""
+    try:
+        ws_list = list(workspaces.values())
+        return jsonify({
+            'success': True,
+            'workspaces': ws_list,
+            'count': len(ws_list)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/workspace/<workspace_id>', methods=['DELETE'])
+def delete_workspace(workspace_id):
+    """Delete a workspace"""
+    try:
+        if workspace_id not in workspaces:
+            return jsonify({'error': 'Workspace not found'}), 404
+            
+        workspace = workspaces[workspace_id]
+        
+        try:
+            chroma_client.delete_collection(workspace['merged_collection'])
+        except Exception as e:
+            print(f"Warning: Could not delete merged collection {workspace['merged_collection']}: {str(e)}")
+            
+        del workspaces[workspace_id]
+        save_registry()
+        
+        return jsonify({
+            'success': True,
+            'message': f"Workspace {workspace['name']} deleted successfully"
+        })
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
@@ -467,6 +714,7 @@ def delete_document(document_id):
         
         # Remove from registry
         del documents_registry[document_id]
+        save_registry()
         
         return jsonify({
             'success': True,
