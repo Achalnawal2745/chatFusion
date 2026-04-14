@@ -10,6 +10,16 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
 from google import genai
 from google.genai import types
+
+# --- RENDER SQLITE3 FIX ---
+# Render uses an older Ubuntu image with an outdated sqlite3.
+# ChromaDB requires sqlite3 >= 3.35.0. This forcibly overwrites
+# the system sqlite3 with the compiled pysqlite3-binary we just installed.
+__import__('pysqlite3')
+import sys
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+# --------------------------
+
 import chromadb
 from chromadb.config import Settings
 import os
