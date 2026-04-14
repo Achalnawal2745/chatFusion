@@ -749,6 +749,37 @@ def delete_document(document_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/rename', methods=['POST'])
+def rename_item():
+    """Rename a document or workspace"""
+    try:
+        data = request.json
+        item_type = data.get('type')
+        item_id = data.get('id')
+        new_name = data.get('name')
+        
+        if not item_type or not item_id or not new_name:
+            return jsonify({'error': 'Missing type, id, or name'}), 400
+            
+        if item_type == 'document':
+            if item_id in documents_registry:
+                documents_registry[item_id]['name'] = new_name
+                save_registry()
+                return jsonify({'success': True})
+            return jsonify({'error': 'Document not found'}), 404
+            
+        elif item_type == 'workspace':
+            if item_id in workspaces:
+                workspaces[item_id]['name'] = new_name
+                save_registry()
+                return jsonify({'success': True})
+            return jsonify({'error': 'Workspace not found'}), 404
+            
+        return jsonify({'error': 'Invalid type'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/health', methods=['GET'])
 def health():
     """Health check endpoint"""

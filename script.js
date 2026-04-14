@@ -1,5 +1,6 @@
 // API Configuration
-const API_BASE_URL = '/api';
+// Smart fallback: if opened via file:// it uses local server, otherwise it uses relative path for Hugging Face
+const API_BASE_URL = window.location.protocol === 'file:' ? 'http://127.0.0.1:5000/api' : '/api';
 
 // State
 let currentDocumentId = null;
@@ -167,7 +168,10 @@ function renderDocuments() {
                 <span class="material-symbols-outlined text-xl ${color}">${icon}</span>
                 <span class="font-label text-sm tracking-wide truncate pr-2">${doc.name}</span>
             </div>
-            <button class="material-symbols-outlined text-sm opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity" onclick="event.stopPropagation(); deleteDocument('${doc.id}')">delete</button>
+            <div class="flex gap-2">
+                <button class="material-symbols-outlined text-sm opacity-0 group-hover:opacity-100 hover:text-primary transition-opacity" onclick="event.stopPropagation(); renameItem('document', '${doc.id}', '${doc.name}')">edit</button>
+                <button class="material-symbols-outlined text-sm opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity" onclick="event.stopPropagation(); deleteDocument('${doc.id}')">delete</button>
+            </div>
         </div>`;
     }).join('');
 }
@@ -184,7 +188,10 @@ function renderWorkspaces() {
                 <span class="material-symbols-outlined text-xl text-secondary">grid_view</span>
                 <span class="font-label text-sm tracking-wide truncate pr-2">${ws.name}</span>
             </div>
-            <button class="material-symbols-outlined text-sm opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity" onclick="event.stopPropagation(); deleteWorkspace('${ws.id}')">delete</button>
+            <div class="flex gap-2">
+                <button class="material-symbols-outlined text-sm opacity-0 group-hover:opacity-100 hover:text-primary transition-opacity" onclick="event.stopPropagation(); renameItem('workspace', '${ws.id}', '${ws.name}')">edit</button>
+                <button class="material-symbols-outlined text-sm opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity" onclick="event.stopPropagation(); deleteWorkspace('${ws.id}')">delete</button>
+            </div>
         </div>`;
     }).join('');
 }
@@ -243,6 +250,32 @@ window.deleteWorkspace = async (id) => {
         if(currentWorkspaceId === id) resetChat();
         loadWorkspaces();
     } catch(e) {}
+}
+
+window.renameItem = async (type, id, oldName) => {
+    const newName = prompt(`Enter a new name for this ${type}:`, oldName);
+    if(!newName || newName.trim() === '' || newName === oldName) return;
+    
+    try {
+        const res = await fetch(`${API_BASE_URL}/rename`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ type, id, name: newName.trim() })
+        });
+        
+        if (res.ok) {
+            if (type === 'document') loadDocuments();
+            else loadWorkspaces();
+            
+            // If the renamed item is currently open, update the header title
+            if ((type === 'document' && currentDocumentId === id) || 
+                (type === 'workspace' && currentWorkspaceId === id)) {
+                currentChatTitle.textContent = newName.trim();
+            }
+        }
+    } catch (e) {
+        console.error("Rename failed", e);
+    }
 }
 
 function resetChat() {
