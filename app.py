@@ -10,16 +10,6 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
 from google import genai
 from google.genai import types
-
-# --- RENDER SQLITE3 FIX ---
-# Render uses an older Ubuntu image with an outdated sqlite3.
-# ChromaDB requires sqlite3 >= 3.35.0. This forcibly overwrites
-# the system sqlite3 with the compiled pysqlite3-binary we just installed.
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-# --------------------------
-
 import chromadb
 from chromadb.config import Settings
 import os
@@ -733,16 +723,6 @@ def delete_document(document_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
-@app.route('/')
-def index():
-    """Serve the frontend"""
-    return send_from_directory('.', 'index.html')
-
-@app.route('/<path:filename>')
-def serve_static(filename):
-    """Serve static files (JS, CSS, etc.)"""
-    return send_from_directory('.', filename)
 
 @app.route('/api/health', methods=['GET'])
 def health():
