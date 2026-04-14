@@ -734,6 +734,16 @@ def delete_document(document_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/')
+def index():
+    """Serve the frontend"""
+    return send_from_directory('.', 'index.html')
+
+@app.route('/<path:filename>')
+def serve_static(filename):
+    """Serve static files (JS, CSS, etc.)"""
+    return send_from_directory('.', filename)
+
 @app.route('/api/health', methods=['GET'])
 def health():
     """Health check endpoint"""
