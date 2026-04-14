@@ -1,4 +1,16 @@
-<!DOCTYPE html>
+import re
+
+with open('stitch_index.html', 'r', encoding='utf-8') as f:
+    stitch_content = f.read()
+
+# Extract tailwind config and styles
+tailwind_config_match = re.search(r'(<script id="tailwind-config">.*?</script>)', stitch_content, re.DOTALL)
+styles_match = re.search(r'(<style>.*?</style>\s*<style>.*?</style>)', stitch_content, re.DOTALL)
+
+tailwind_config = tailwind_config_match.group(1) if tailwind_config_match else ""
+styles = styles_match.group(1) if styles_match else ""
+
+html_template = f"""<!DOCTYPE html>
 <html class="dark" lang="en"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
@@ -7,93 +19,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
-<script id="tailwind-config">
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    "colors": {
-                        "background": "#131313",
-                        "on-tertiary-fixed": "#2c1700",
-                        "tertiary": "#ffb869",
-                        "surface-container-low": "#1c1b1b",
-                        "on-secondary": "#003640",
-                        "on-secondary-fixed": "#001f26",
-                        "on-tertiary-fixed-variant": "#673d00",
-                        "inverse-primary": "#6d3bd7",
-                        "on-secondary-container": "#00424e",
-                        "on-secondary-fixed-variant": "#004e5c",
-                        "tertiary-fixed-dim": "#ffb869",
-                        "on-background": "#e5e2e1",
-                        "primary": "#d0bcff",
-                        "on-primary": "#3c0091",
-                        "on-surface": "#e5e2e1",
-                        "outline": "#958ea0",
-                        "error-container": "#93000a",
-                        "primary-fixed-dim": "#d0bcff",
-                        "inverse-on-surface": "#313030",
-                        "secondary-fixed-dim": "#4cd7f6",
-                        "secondary-container": "#03b5d3",
-                        "surface-container-highest": "#353534",
-                        "on-error-container": "#ffdad6",
-                        "primary-fixed": "#e9ddff",
-                        "secondary": "#4cd7f6",
-                        "outline-variant": "#494454",
-                        "surface-bright": "#3a3939",
-                        "on-primary-fixed": "#23005c",
-                        "surface-dim": "#131313",
-                        "error": "#ffb4ab",
-                        "surface-container": "#201f1f",
-                        "inverse-surface": "#e5e2e1",
-                        "on-tertiary": "#482900",
-                        "secondary-fixed": "#acedff",
-                        "tertiary-fixed": "#ffdcbb",
-                        "surface-variant": "#353534",
-                        "on-error": "#690005",
-                        "on-tertiary-container": "#3f2300",
-                        "primary-container": "#a078ff",
-                        "on-primary-container": "#340080",
-                        "surface-tint": "#d0bcff",
-                        "surface": "#131313",
-                        "on-surface-variant": "#cbc3d7",
-                        "on-primary-fixed-variant": "#5516be",
-                        "surface-container-high": "#2a2a2a",
-                        "surface-container-lowest": "#0e0e0e",
-                        "tertiary-container": "#ca801e"
-                    },
-                    "borderRadius": {
-                        "DEFAULT": "0.125rem",
-                        "lg": "0.25rem",
-                        "xl": "0.5rem",
-                        "full": "0.75rem"
-                    },
-                    "fontFamily": {
-                        "headline": ["Space Grotesk"],
-                        "body": ["Inter"],
-                        "label": ["Inter"]
-                    }
-                },
-            },
-        }
-</script>
-<style>
-    .material-symbols-outlined {
-        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-    }
-    .glass-panel {
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-    }
-    .no-scrollbar::-webkit-scrollbar {
-        display: none;
-    }
-    .tonal-transition {
-        background: linear-gradient(to bottom, #131313 0%, rgba(19, 19, 19, 0.8) 50%, transparent 100%);
-    }
-    body {
-        min-height: max(884px, 100dvh);
-    }
-</style>
+{tailwind_config}
+{styles}
 </head>
 <body class="bg-background text-on-background font-body min-h-screen selection:bg-primary/30 selection:text-primary overflow-x-hidden">
 
@@ -108,7 +35,7 @@
     <nav class="flex-1 space-y-8 overflow-y-auto no-scrollbar">
         <!-- Dynamic Section: My Documents -->
         <div>
-            <span class="block flex px-4 mb-4 font-label text-[10px] uppercase tracking-[0.2em] text-outline">My Documents</span>
+            <span class="block px-4 mb-4 font-label text-[10px] uppercase tracking-[0.2em] text-outline">My Documents</span>
             <div id="documentsList" class="space-y-1">
                 <!-- Javascript will inject documents here -->
             </div>
@@ -117,7 +44,7 @@
         <div>
             <div class="flex justify-between items-center px-4 mb-4">
                 <span class="block font-label text-[10px] uppercase tracking-[0.2em] text-outline">Workspaces</span>
-                <button id="createWorkspaceBtn" class="text-primary hover:text-white" title="Create Workspace"><span class="material-symbols-outlined text-xl">add_box</span></button>
+                <button id="createWorkspaceBtn" class="text-primary hover:text-white"><span class="material-symbols-outlined text-xl">add_box</span></button>
             </div>
             <div id="workspacesList" class="space-y-1">
                 <!-- Javascript will inject workspaces here -->
@@ -140,10 +67,10 @@
             <button id="menuBtn" class="md:hidden text-[#d0bcff] active:scale-95 duration-200">
                 <span class="material-symbols-outlined">menu</span>
             </button>
-            <span id="currentChatTitle" class="font-headline tracking-tight text-xl font-bold bg-gradient-to-r from-[#d0bcff] to-[#a078ff] bg-clip-text text-transparent truncate max-w-[200px] md:max-w-full">Select Document</span>
+            <span id="currentChatTitle" class="font-headline tracking-tight text-xl font-bold bg-gradient-to-r from-[#d0bcff] to-[#a078ff] bg-clip-text text-transparent truncate max-w-[200px] md:max-w-full">Select a Document</span>
         </div>
         <div class="flex items-center gap-4">
-            <span id="currentChatType" class="text-outline text-[10px] md:text-sm tracking-widest uppercase font-bold"></span>
+            <span id="currentChatType" class="text-outline text-[10px] md:text-xs tracking-wider uppercase font-bold"></span>
         </div>
     </header>
 
@@ -210,7 +137,7 @@
             <h2 class="font-headline text-xl text-primary font-bold">Create Workspace</h2>
             <button id="closeCreateWsBtn" class="text-outline hover:text-white"><span class="material-symbols-outlined">close</span></button>
         </div>
-        <p class="text-[12px] text-outline mb-4">Combine multiple documents into one unified AI brain.</p>
+        <p class="text-[11px] text-outline mb-4">Combine multiple documents into one unified AI brain.</p>
         
         <div class="space-y-4 flex flex-col">
             <input type="text" id="workspaceNameInput" class="w-full bg-surface border border-outline-variant/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary text-white" placeholder="Workspace Name (e.g. Deep Learning Study)"/>
@@ -222,7 +149,7 @@
             
             <div id="workspaceCreateStatus" class="text-xs text-secondary mt-2 hidden">Creating workspace...</div>
             
-            <div class="flex justify-end gap-3 mt-4">
+            <div class="flex justify-end gap-3 mt-2">
                 <button id="cancelWorkspaceBtn" class="text-outline hover:text-white px-4 py-2 text-sm font-bold">Cancel</button>
                 <button id="confirmCreateWorkspaceBtn" class="bg-gradient-to-r from-primary to-primary-container text-on-primary-container px-6 py-2 rounded-lg text-sm font-bold transition-all shadow-[0_0_15px_rgba(208,188,255,0.4)] hover:scale-105 active:scale-95">Create</button>
             </div>
@@ -230,9 +157,9 @@
     </div>
 </div>
 
-<!-- Decorative Elements -->
-<div class="fixed top-[-10%] right-[-10%] w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] pointer-events-none z-[-1]"></div>
-<div class="fixed bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-secondary/5 rounded-full blur-[120px] pointer-events-none z-[-1]"></div>
-
 <script src="script.js"></script>
 </body></html>
+"""
+
+with open('index.html', 'w', encoding='utf-8') as f:
+    f.write(html_template)
