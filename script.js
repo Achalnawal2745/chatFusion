@@ -47,6 +47,9 @@ const videoStatus = document.getElementById('videoStatus');
 const pdfFile = document.getElementById('pdfFile');
 const uploadBtn = document.getElementById('uploadBtn');
 const pdfStatus = document.getElementById('pdfStatus');
+const audioFile = document.getElementById('audioFile');
+const uploadAudioBtn = document.getElementById('uploadAudioBtn');
+const audioStatus = document.getElementById('audioStatus');
 
 // --- Layout & Modals Logic ---
 menuBtn.addEventListener('click', () => {
@@ -68,9 +71,9 @@ closeAddDocBtn.addEventListener('click', closeAddDoc);
 addDocOverlay.addEventListener('click', closeAddDoc);
 
 // Create Workspace Modal
-const openCreateWs = () => { 
-    createWsModal.classList.remove('hidden'); 
-    closeNav(); 
+const openCreateWs = () => {
+    createWsModal.classList.remove('hidden');
+    closeNav();
     populateWorkspaceDocSelector();
     workspaceNameInput.value = '';
     workspaceCreateStatus.classList.add('hidden');
@@ -86,7 +89,7 @@ createWsOverlay.addEventListener('click', closeCreateWs);
 function showStatus(el, msg, isError = false) {
     el.textContent = msg;
     el.classList.remove('hidden');
-    if(isError) {
+    if (isError) {
         el.classList.add('text-red-400');
         el.classList.remove('text-secondary', 'text-primary');
     } else {
@@ -106,7 +109,7 @@ processVideoBtn.addEventListener('click', async () => {
         const response = await fetch(`${API_BASE_URL}/process-video`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Failed to process video');
-        
+
         showStatus(videoStatus, `✓ Processed! ${data.chunks_created} chunks.`, false);
         setTimeout(() => { closeAddDoc(); loadDocuments(); window.selectDocument(data.document_id, 'YouTube Video'); }, 1500);
     } catch (e) {
@@ -128,11 +131,37 @@ pdfFile.addEventListener('change', async () => {
         const response = await fetch(`${API_BASE_URL}/process-pdf`, { method: 'POST', body: formData });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Failed to process PDF');
-        
+
         showStatus(pdfStatus, `✓ Success!`, false);
         setTimeout(() => { closeAddDoc(); loadDocuments(); window.selectDocument(data.document_id, data.filename); }, 1500);
     } catch (e) {
         showStatus(pdfStatus, `Error: ${e.message}`, true);
+    }
+});
+
+// Audio Upload
+uploadAudioBtn.addEventListener('click', () => audioFile.click());
+audioFile.addEventListener('change', async () => {
+    const file = audioFile.files[0];
+    if (!file) return;
+    const allowedExts = ['mp3', 'm4a', 'wav', 'ogg', 'flac', 'aac', 'weba', 'webm'];
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!allowedExts.includes(ext)) { showStatus(audioStatus, 'Unsupported audio format.', true); return; }
+    showStatus(audioStatus, `Transcribing ${file.name}... this may take a minute.`, false);
+    uploadAudioBtn.disabled = true; uploadAudioBtn.innerText = '⏳ Processing...';
+
+    const formData = new FormData(); formData.append('file', file);
+    try {
+        const response = await fetch(`${API_BASE_URL}/process-audio`, { method: 'POST', body: formData });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to process audio');
+
+        showStatus(audioStatus, `✓ Transcribed! ${data.chunks_created} chunks created.`, false);
+        setTimeout(() => { closeAddDoc(); loadDocuments(); window.selectDocument(data.document_id, data.filename); }, 1500);
+    } catch (e) {
+        showStatus(audioStatus, `Error: ${e.message}`, true);
+    } finally {
+        uploadAudioBtn.disabled = false; uploadAudioBtn.innerText = 'Choose Audio File';
     }
 });
 
@@ -141,7 +170,7 @@ async function loadDocuments() {
     try {
         const response = await fetch(`${API_BASE_URL}/documents`);
         const data = await response.json();
-        if(data.success) { documents = data.documents; renderDocuments(); }
+        if (data.success) { documents = data.documents; renderDocuments(); }
     } catch (e) { console.error(e); }
 }
 
@@ -149,20 +178,20 @@ async function loadWorkspaces() {
     try {
         const response = await fetch(`${API_BASE_URL}/workspaces`);
         const data = await response.json();
-        if(data.success) { workspaces = data.workspaces; renderWorkspaces(); }
+        if (data.success) { workspaces = data.workspaces; renderWorkspaces(); }
     } catch (e) { console.error(e); }
 }
 
 function renderDocuments() {
-    if(documents.length === 0) {
+    if (documents.length === 0) {
         documentsList.innerHTML = `<div class="text-xs text-outline px-4 italic">No documents yet</div>`; return;
     }
     documentsList.innerHTML = documents.map(doc => {
         const isSel = doc.id === currentDocumentId;
-        const icon = doc.type === 'youtube' ? 'smart_display' : 'description';
-        const color = doc.type === 'youtube' ? 'text-red-400' : 'text-primary';
+        const icon = doc.type === 'youtube' ? 'smart_display' : doc.type === 'audio' ? 'mic' : 'description';
+        const color = doc.type === 'youtube' ? 'text-red-400' : doc.type === 'audio' ? 'text-tertiary' : 'text-primary';
         const activeClass = isSel ? 'bg-gradient-to-r from-[#d0bcff]/10 to-transparent text-[#d0bcff] border-l-2 border-[#d0bcff]' : 'text-[#958ea0] hover:bg-[#2a2a2a] hover:text-white border-l-2 border-transparent';
-        
+
         return `<div class="flex justify-between items-center group px-4 py-3 cursor-pointer transition-all ${activeClass}" onclick="selectDocument('${doc.id}', '${doc.name}')">
             <div class="flex items-center gap-4 truncate">
                 <span class="material-symbols-outlined text-xl ${color}">${icon}</span>
@@ -177,7 +206,7 @@ function renderDocuments() {
 }
 
 function renderWorkspaces() {
-    if(workspaces.length === 0) {
+    if (workspaces.length === 0) {
         workspacesList.innerHTML = `<div class="text-xs text-outline px-4 italic">No workspaces yet</div>`; return;
     }
     workspacesList.innerHTML = workspaces.map(ws => {
@@ -198,7 +227,7 @@ function renderWorkspaces() {
 
 // Workspace Creation
 function populateWorkspaceDocSelector() {
-    if(documents.length < 2) {
+    if (documents.length < 2) {
         workspaceDocsList.innerHTML = '<p class="text-xs text-outline">You need at least 2 documents.</p>';
         confirmCreateWorkspaceBtn.disabled = true; return;
     }
@@ -206,7 +235,7 @@ function populateWorkspaceDocSelector() {
     workspaceDocsList.innerHTML = documents.map(doc => `
         <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-surface-container rounded cursor-pointer group text-outline hover:text-white transition-colors">
             <input type="checkbox" value="${doc.id}" class="rounded border-outline-variant/30 text-primary focus:ring-primary bg-background">
-            <span class="material-symbols-outlined text-sm ${doc.type === 'youtube' ? 'text-red-400' : 'text-primary'}">${doc.type === 'youtube' ? 'smart_display' : 'description'}</span>
+            <span class="material-symbols-outlined text-sm ${doc.type === 'youtube' ? 'text-red-400' : doc.type === 'audio' ? 'text-tertiary' : 'text-primary'}">${doc.type === 'youtube' ? 'smart_display' : doc.type === 'audio' ? 'mic' : 'description'}</span>
             <span class="text-sm truncate flex-1">${doc.name}</span>
         </label>
     `).join('');
@@ -214,61 +243,61 @@ function populateWorkspaceDocSelector() {
 
 confirmCreateWorkspaceBtn.addEventListener('click', async () => {
     const name = workspaceNameInput.value.trim();
-    if(!name) { showStatus(workspaceCreateStatus, 'Enter a name', true); return; }
-    
+    if (!name) { showStatus(workspaceCreateStatus, 'Enter a name', true); return; }
+
     const checkboxes = workspaceDocsList.querySelectorAll('input[type="checkbox"]:checked');
-    if(checkboxes.length < 2) { showStatus(workspaceCreateStatus, 'Select 2+ docs', true); return; }
-    
+    if (checkboxes.length < 2) { showStatus(workspaceCreateStatus, 'Select 2+ docs', true); return; }
+
     confirmCreateWorkspaceBtn.disabled = true;
     showStatus(workspaceCreateStatus, 'Creating...', false);
-    
+
     try {
         const docIds = Array.from(checkboxes).map(c => c.value);
-        const res = await fetch(`${API_BASE_URL}/workspace/create`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name, document_ids: docIds})});
+        const res = await fetch(`${API_BASE_URL}/workspace/create`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, document_ids: docIds }) });
         const data = await res.json();
-        if(!res.ok) throw new Error(data.error);
-        
+        if (!res.ok) throw new Error(data.error);
+
         showStatus(workspaceCreateStatus, '✓ Created!');
         setTimeout(() => { closeCreateWs(); loadWorkspaces(); }, 1000);
-    } catch(e) { showStatus(workspaceCreateStatus, `Error: ${e.message}`, true); }
+    } catch (e) { showStatus(workspaceCreateStatus, `Error: ${e.message}`, true); }
     finally { confirmCreateWorkspaceBtn.disabled = false; }
 });
 
 // Deletion
 window.deleteDocument = async (id) => {
-    if(!confirm('Delete this document?')) return;
+    if (!confirm('Delete this document?')) return;
     try {
-        await fetch(`${API_BASE_URL}/document/${id}`, {method: 'DELETE'});
-        if(currentDocumentId === id) resetChat();
+        await fetch(`${API_BASE_URL}/document/${id}`, { method: 'DELETE' });
+        if (currentDocumentId === id) resetChat();
         loadDocuments();
-    } catch(e) {}
+    } catch (e) { }
 }
 window.deleteWorkspace = async (id) => {
-    if(!confirm('Delete this workspace?')) return;
+    if (!confirm('Delete this workspace?')) return;
     try {
-        await fetch(`${API_BASE_URL}/workspace/${id}`, {method: 'DELETE'});
-        if(currentWorkspaceId === id) resetChat();
+        await fetch(`${API_BASE_URL}/workspace/${id}`, { method: 'DELETE' });
+        if (currentWorkspaceId === id) resetChat();
         loadWorkspaces();
-    } catch(e) {}
+    } catch (e) { }
 }
 
 window.renameItem = async (type, id, oldName) => {
     const newName = prompt(`Enter a new name for this ${type}:`, oldName);
-    if(!newName || newName.trim() === '' || newName === oldName) return;
-    
+    if (!newName || newName.trim() === '' || newName === oldName) return;
+
     try {
         const res = await fetch(`${API_BASE_URL}/rename`, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ type, id, name: newName.trim() })
         });
-        
+
         if (res.ok) {
             if (type === 'document') loadDocuments();
             else loadWorkspaces();
-            
+
             // If the renamed item is currently open, update the header title
-            if ((type === 'document' && currentDocumentId === id) || 
+            if ((type === 'document' && currentDocumentId === id) ||
                 (type === 'workspace' && currentWorkspaceId === id)) {
                 currentChatTitle.textContent = newName.trim();
             }
@@ -307,14 +336,14 @@ window.selectWorkspace = (id, name) => {
 }
 
 function initChatView(id) {
-    if(window.innerWidth < 768) closeNav();
+    if (window.innerWidth < 768) closeNav();
     chatFooter.classList.remove('hidden');
     renderDocuments(); renderWorkspaces();
     chatMessages.innerHTML = '';
-    
+
     // Load history
     const history = JSON.parse(localStorage.getItem(`chat_${id}`) || '[]');
-    if(history.length > 0) {
+    if (history.length > 0) {
         history.forEach(m => renderMessage(m.text, m.sender, m.sources));
     } else {
         chatMessages.innerHTML = `
@@ -331,18 +360,18 @@ function initChatView(id) {
 
 function saveHistory(text, sender, sources = null) {
     const activeId = currentWorkspaceId || currentDocumentId;
-    if(!activeId) return;
+    if (!activeId) return;
     const history = JSON.parse(localStorage.getItem(`chat_${activeId}`) || '[]');
-    history.push({text, sender, sources});
+    history.push({ text, sender, sources });
     localStorage.setItem(`chat_${activeId}`, JSON.stringify(history.slice(-50)));
 }
 
 function renderMessage(text, sender, sources = null) {
     // Remove blank state if exists
-    if(chatMessages.querySelector('.h-48')) chatMessages.innerHTML = '';
+    if (chatMessages.querySelector('.h-48')) chatMessages.innerHTML = '';
 
     const el = document.createElement('div');
-    if(sender === 'user') {
+    if (sender === 'user') {
         el.className = "group flex flex-col items-end animate-in fade-in slide-in-from-right-4 duration-500 mb-8";
         el.innerHTML = `
             <div class="max-w-[85%] md:max-w-[70%] bg-surface-container-low border border-outline-variant/10 rounded-2xl rounded-tr-none px-6 py-4 shadow-[0_10px_30px_rgba(0,0,0,0.3)]">
@@ -352,9 +381,9 @@ function renderMessage(text, sender, sources = null) {
         `;
     } else {
         el.className = "group relative flex flex-col items-start animate-in fade-in slide-in-from-left-4 duration-500 mb-8";
-        
+
         let sourcesHtml = '';
-        if(sources && sources.length > 0) {
+        if (sources && sources.length > 0) {
             sourcesHtml = `
             <div class="mt-6 pt-4 border-t border-outline-variant/10">
                 <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-container-highest/50 border border-outline-variant/20 hover:border-primary/40 transition-all cursor-default">
@@ -364,7 +393,7 @@ function renderMessage(text, sender, sources = null) {
                 <div class="mt-3 flex flex-wrap gap-2">
                     ${sources.map(s => `
                     <div class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface-container-lowest border border-outline-variant/5 text-[11px] text-outline-variant">
-                        <span class="material-symbols-outlined text-sm ${s.type === 'pdf' ? 'text-primary' : 'text-red-400'}">${s.type === 'pdf' ? 'description' : 'movie'}</span>
+                        <span class="material-symbols-outlined text-sm ${s.type === 'pdf' ? 'text-primary' : s.type === 'audio' ? 'text-tertiary' : 'text-red-400'}">${s.type === 'pdf' ? 'description' : s.type === 'audio' ? 'mic' : 'movie'}</span>
                         <span class="truncate max-w-[150px]">${s.name}</span>
                     </div>`).join('')}
                 </div>
@@ -393,42 +422,42 @@ function renderMessage(text, sender, sources = null) {
 }
 
 sendBtn.addEventListener('click', sendChat);
-chatInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendChat(); });
+chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendChat(); });
 
 async function sendChat() {
     const q = chatInput.value.trim();
-    if(!q || (!currentDocumentId && !currentWorkspaceId)) return;
-    
+    if (!q || (!currentDocumentId && !currentWorkspaceId)) return;
+
     renderMessage(q, 'user');
     saveHistory(q, 'user');
     chatInput.value = '';
-    
+
     typingIndicator.classList.remove('hidden');
-    
+
     try {
         let endpoint = `${API_BASE_URL}/chat`;
         let payload = { question: q };
-        if(currentWorkspaceId) {
+        if (currentWorkspaceId) {
             endpoint = `${API_BASE_URL}/workspace/chat`;
             payload.workspace_id = currentWorkspaceId;
         } else {
             payload.document_id = currentDocumentId;
         }
-        
+
         const response = await fetch(endpoint, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-        
+
         const data = await response.json();
         typingIndicator.classList.add('hidden');
-        if(!response.ok) throw new Error(data.error);
-        
+        if (!response.ok) throw new Error(data.error);
+
         renderMessage(data.answer, 'ai', data.sources_used);
         saveHistory(data.answer, 'ai', data.sources_used);
-        
-    } catch(e) {
+
+    } catch (e) {
         typingIndicator.classList.add('hidden');
         renderMessage(`⚠️ Error: ${e.message}`, 'ai');
     }

@@ -38,7 +38,14 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 # Initialize Sentence Transformer for local embeddings
 print("Loading Sentence Transformer model...")
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-print("Model loaded successfully!")
+print("Sentence Transformer loaded!")
+
+# Initialize faster-whisper for local audio transcription (free, no API needed)
+print("Loading Whisper model (base)... this may take a moment on first run...")
+from faster_whisper import WhisperModel
+# 'base' = ~140MB download, good speed/accuracy. Upgrade to 'small' or 'medium' for better accuracy.
+whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
+print("Whisper model loaded!")
 
 # Initialize ChromaDB with persistent storage
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
@@ -46,7 +53,8 @@ chroma_client = chromadb.PersistentClient(path="./chroma_db")
 # Configure file uploads
 UPLOAD_FOLDER = './uploads'
 ALLOWED_EXTENSIONS = {'pdf'}
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+ALLOWED_AUDIO_EXTENSIONS = {'mp3', 'm4a', 'wav', 'ogg', 'flac', 'aac', 'weba', 'webm'}
+MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB (for audio files)
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
@@ -143,8 +151,13 @@ def chunk_transcript(transcript, chunk_size=500, overlap=100):
 
 
 def allowed_file(filename):
-    """Check if file extension is allowed"""
+    """Check if file extension is allowed (PDF)"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def allowed_audio_file(filename):
+    """Check if file extension is an allowed audio format"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_AUDIO_EXTENSIONS
 
 
 def extract_text_from_pdf(pdf_path):
@@ -401,6 +414,111 @@ def process_pdf():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/process-audio', methods=['POST'])
+def process_audio():
+    """Process audio file using faster-whisper (local, free) and create embeddings"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+
+        if not allowed_audio_file(file.filename):
+            return jsonify({'error': f'Invalid file type. Allowed formats: mp3, m4a, wav, ogg, flac, aac, webm'}), 400
+
+        # Save file temporarily
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        base_name = os.path.splitext(filename)[0]
+
+        try:
+            print(f"🎙️ Transcribing audio: {filename} using faster-whisper (local)...")
+
+            segments, info = whisper_model.transcribe(filepath, beam_size=5)
+
+            print(f"   Detected language: {info.language} (probability: {info.language_probability:.2f})")
+
+            # Collect all segments into full transcript
+            transcript_parts = []
+            for segment in segments:
+                transcript_parts.append(segment.text.strip())
+
+            transcript_text = "\n".join(transcript_parts)
+
+            if not transcript_text or len(transcript_text.strip()) < 50:
+                return jsonify({'error': 'Could not extract any speech from the audio file. Please ensure the file contains clear spoken content.'}), 400
+
+            print(f"✅ Transcription complete: {len(transcript_text)} characters")
+
+            # Chunk the transcript
+            chunks = chunk_text(transcript_text)
+            print(f"📊 Created {len(chunks)} chunks")
+
+            # Create ChromaDB collection
+            doc_id = f"audio_{str(uuid.uuid4())[:8]}"
+            collection_name = doc_id
+
+            try:
+                chroma_client.delete_collection(collection_name)
+            except:
+                pass
+
+            collection = chroma_client.create_collection(
+                name=collection_name,
+                metadata={"document_id": doc_id, "filename": filename}
+            )
+
+            # Generate embeddings
+            texts = [chunk['text'] for chunk in chunks]
+            metadatas = [{'chunk_index': chunk['chunk_index'], 'filename': filename, 'source_type': 'audio'} for chunk in chunks]
+            ids = [f"chunk_{i}" for i in range(len(chunks))]
+
+            print(f"Generating embeddings for {len(texts)} audio chunks...")
+            embeddings = embedding_model.encode(texts, show_progress_bar=True).tolist()
+            print("Embeddings generated!")
+
+            collection.add(
+                embeddings=embeddings,
+                documents=texts,
+                metadatas=metadatas,
+                ids=ids
+            )
+
+            # Register the document
+            documents_registry[doc_id] = {
+                'id': doc_id,
+                'type': 'audio',
+                'name': base_name,
+                'collection_name': collection_name,
+                'chunks_count': len(chunks),
+                'transcript_length': len(transcript_text),
+                'language': info.language,
+                'created_at': datetime.now().isoformat()
+            }
+            save_registry()
+
+            return jsonify({
+                'success': True,
+                'document_id': doc_id,
+                'filename': base_name,
+                'chunks_created': len(chunks),
+                'transcript_length': len(transcript_text),
+                'language': info.language,
+                'message': 'Audio transcribed and processed successfully!'
+            })
+
+        finally:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+
+    except Exception as e:
+        import traceback
+        print(f"Audio processing error: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
@@ -449,11 +567,19 @@ def chat():
         # Generate response using Gemini
         # Prepare dynamic prompt text based on document type
         doc_type = doc_info.get('type', 'document')
-        is_video = doc_type == 'youtube'
         
-        doc_noun = "YouTube video" if is_video else "PDF document"
-        content_noun = "transcript" if is_video else "text"
-        ref_noun = "timestamps in seconds" if is_video else "chunk numbers"
+        if doc_type == 'youtube':
+            doc_noun = "YouTube video"
+            content_noun = "transcript"
+            ref_noun = "timestamps in seconds"
+        elif doc_type == 'audio':
+            doc_noun = "audio transcription"
+            content_noun = "transcript"
+            ref_noun = "chunk numbers"
+        else:
+            doc_noun = "PDF document"
+            content_noun = "text"
+            ref_noun = "chunk numbers"
         
         prompt = f"""You are a helpful assistant that answers questions about a {doc_noun} based on its {content_noun}.
 
@@ -613,7 +739,7 @@ def workspace_chat():
             
         context_sections = []
         for src_id, src_data in sources_used.items():
-            section_header = f"{'📄' if src_data['type'] == 'pdf' else '🎥'} {src_data['name']}:"
+            section_header = f"{'📄' if src_data['type'] == 'pdf' else '🎙️' if src_data['type'] == 'audio' else '🎥'} {src_data['name']}:"
             section_content = "\n\n".join(src_data['chunks'])
             context_sections.append(f"{section_header}\n{section_content}")
             
@@ -621,7 +747,7 @@ def workspace_chat():
         
         num_sources = len(sources_used)
         source_list = "\n".join([
-            f"- {'📄' if s['type']=='pdf' else '🎥'} {s['name']} ({s['type'].upper()})"
+            f"- {'📄' if s['type']=='pdf' else '🎙️' if s['type']=='audio' else '🎥'} {s['name']} ({s['type'].upper()})"
             for s in sources_used.values()
         ])
         
