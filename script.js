@@ -366,6 +366,36 @@ function saveHistory(text, sender, sources = null) {
     localStorage.setItem(`chat_${activeId}`, JSON.stringify(history.slice(-50)));
 }
 
+// Lightweight markdown renderer for AI responses
+function parseMarkdown(text) {
+    return text
+        // Escape HTML to prevent XSS
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        // Headers (### ## #)
+        .replace(/^### (.+)$/gm, '<h3 class="text-base font-bold text-primary mt-4 mb-1">$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2 class="text-lg font-bold text-primary mt-5 mb-2">$1</h2>')
+        .replace(/^# (.+)$/gm, '<h1 class="text-xl font-bold text-primary mt-5 mb-2">$1</h1>')
+        // Bold **text**
+        .replace(/\*\*(.+?)\*\*/g, '<strong class="text-on-surface font-semibold">$1</strong>')
+        // Italic *text*
+        .replace(/\*(.+?)\*/g, '<em class="italic">$1</em>')
+        // Inline code `code`
+        .replace(/`([^`]+)`/g, '<code class="bg-surface-container-high text-secondary px-1.5 py-0.5 rounded text-sm font-mono">$1</code>')
+        // Bullet lists (- item or * item)
+        .replace(/^[\-\*] (.+)$/gm, '<li class="ml-4 mb-1 list-disc">$1</li>')
+        .replace(/(<li[^>]*>.*<\/li>\n?)+/g, '<ul class="my-2 space-y-1">$&</ul>')
+        // Numbered lists (1. item)
+        .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 mb-1 list-decimal">$1</li>')
+        // Horizontal rule ---
+        .replace(/^---$/gm, '<hr class="border-outline-variant/20 my-4">')
+        // Line breaks
+        .replace(/\n\n/g, '</p><p class="mb-3">')
+        .replace(/\n/g, '<br>')
+        // Wrap in paragraph
+        .replace(/^(.)/s, '<p class="mb-3">$1')
+        + '</p>';
+}
+
 function renderMessage(text, sender, sources = null) {
     // Remove blank state if exists
     if (chatMessages.querySelector('.h-48')) chatMessages.innerHTML = '';
@@ -412,7 +442,7 @@ function renderMessage(text, sender, sources = null) {
                         <span class="text-[9px] md:text-[10px] uppercase tracking-widest text-secondary/60">ChatFusion Core</span>
                     </div>
                 </div>
-                <div class="text-on-surface-variant font-body leading-relaxed text-sm md:text-base whitespace-pre-wrap">${text}</div>
+                <div class="text-on-surface-variant font-body leading-relaxed text-sm md:text-base prose-sm"><div class="markdown-body">${parseMarkdown(text)}</div></div>
                 ${sourcesHtml}
             </div>
         `;
