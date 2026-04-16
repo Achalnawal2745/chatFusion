@@ -62,6 +62,14 @@
             "collection_name": "pdf_032a63dd",
             "chunks_count": 5,
             "created_at": "2026-04-15T09:59:56.619505"
+        },
+        "pdf_7945311c": {
+            "id": "pdf_7945311c",
+            "type": "pdf",
+            "name": "bef.pdf",
+            "collection_name": "pdf_7945311c",
+            "chunks_count": 1,
+            "created_at": "2026-04-17T00:16:37.273541"
         }
     },
     "workspaces": {
@@ -82,10 +90,11 @@
             "document_ids": [
                 "youtube_WJ-UaAaumNA",
                 "youtube_povNcHSasgs",
-                "youtube_3MqyDWDpZoI"
+                "youtube_3MqyDWDpZoI",
+                "audio_eb74532c"
             ],
             "merged_collection": "workspace_merged_ws_d87fbf6d",
-            "total_chunks": 13,
+            "total_chunks": 14,
             "created_at": "2026-04-14T21:06:23.599614"
         }
     }

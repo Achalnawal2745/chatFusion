@@ -843,6 +843,78 @@ def delete_workspace(workspace_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/workspace/<workspace_id>/add-document', methods=['POST'])
+def add_document_to_workspace(workspace_id):
+    """Append a new document's chunks into an existing workspace's merged collection"""
+    try:
+        if workspace_id not in workspaces:
+            return jsonify({'error': 'Workspace not found'}), 404
+
+        data = request.json
+        document_id = data.get('document_id')
+
+        if not document_id:
+            return jsonify({'error': 'document_id is required'}), 400
+
+        if document_id not in documents_registry:
+            return jsonify({'error': 'Document not found'}), 404
+
+        workspace = workspaces[workspace_id]
+
+        # Prevent adding a document that's already in the workspace
+        if document_id in workspace.get('document_ids', []):
+            return jsonify({'error': 'Document already exists in this workspace'}), 409
+
+        doc_info = documents_registry[document_id]
+        source_collection = chroma_client.get_collection(doc_info['collection_name'])
+        merged_collection = chroma_client.get_collection(workspace['merged_collection'])
+
+        # Pull all chunks from the source document
+        all_chunks = source_collection.get(include=['documents', 'metadatas', 'embeddings'])
+
+        if not all_chunks['documents']:
+            return jsonify({'error': 'Document has no chunks to merge'}), 400
+
+        # Use a unique prefix based on current merged count to avoid ID collisions
+        existing_count = merged_collection.count()
+
+        for i, (text, meta, embedding) in enumerate(zip(
+            all_chunks['documents'],
+            all_chunks['metadatas'],
+            all_chunks['embeddings']
+        )):
+            meta['source_doc_id'] = document_id
+            meta['source_name'] = doc_info['name']
+            meta['source_type'] = doc_info['type']
+
+            merged_collection.add(
+                documents=[text],
+                metadatas=[meta],
+                embeddings=[embedding],
+                ids=[f"merged_{document_id}_{existing_count + i}"]
+            )
+
+        # Update workspace metadata
+        workspace['document_ids'].append(document_id)
+        workspace['total_chunks'] = workspace.get('total_chunks', 0) + len(all_chunks['documents'])
+        save_registry()
+
+        return jsonify({
+            'success': True,
+            'workspace_id': workspace_id,
+            'workspace_name': workspace['name'],
+            'document_added': doc_info['name'],
+            'chunks_added': len(all_chunks['documents']),
+            'total_chunks': workspace['total_chunks'],
+            'message': f"'{doc_info['name']}' merged into '{workspace['name']}' successfully"
+        })
+
+    except Exception as e:
+        import traceback
+        print(f"Add-to-workspace error: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/documents', methods=['GET'])
 def list_documents():
     """List all processed documents"""

@@ -40,6 +40,18 @@ const workspaceNameInput = document.getElementById('workspaceNameInput');
 const workspaceDocsList = document.getElementById('workspaceDocsList');
 const workspaceCreateStatus = document.getElementById('workspaceCreateStatus');
 
+// Add-to-Workspace Modal
+const addToWsModal = document.getElementById('addToWsModal');
+const addToWsOverlay = document.getElementById('addToWsOverlay');
+const closeAddToWsBtn = document.getElementById('closeAddToWsBtn');
+const cancelAddToWsBtn = document.getElementById('cancelAddToWsBtn');
+const confirmAddToWsBtn = document.getElementById('confirmAddToWsBtn');
+const addToWsList = document.getElementById('addToWsList');
+const addToWsStatus = document.getElementById('addToWsStatus');
+const addToWsDocName = document.getElementById('addToWsDocName');
+let _addToWsDocId = null;
+let _addToWsDocLabel = '';
+
 // Upload Elements
 const videoUrl = document.getElementById('videoUrl');
 const processVideoBtn = document.getElementById('processVideoBtn');
@@ -84,6 +96,88 @@ createWorkspaceBtn.addEventListener('click', openCreateWs);
 closeCreateWsBtn.addEventListener('click', closeCreateWs);
 cancelWorkspaceBtn.addEventListener('click', closeCreateWs);
 createWsOverlay.addEventListener('click', closeCreateWs);
+
+// Add-to-Workspace Modal wiring
+const closeAddToWs = () => {
+    addToWsModal.classList.add('hidden');
+    _addToWsDocId = null;
+    _addToWsDocLabel = '';
+    addToWsStatus.classList.add('hidden');
+};
+closeAddToWsBtn.addEventListener('click', closeAddToWs);
+cancelAddToWsBtn.addEventListener('click', closeAddToWs);
+addToWsOverlay.addEventListener('click', closeAddToWs);
+
+window.addDocToWorkspace = (docId, docName) => {
+    if (workspaces.length === 0) {
+        alert('No workspaces yet. Create a workspace first, then add documents to it.');
+        return;
+    }
+    _addToWsDocId = docId;
+    _addToWsDocLabel = docName;
+    addToWsDocName.textContent = docName;
+    addToWsStatus.classList.add('hidden');
+    addToWsStatus.className = 'text-xs mt-3 hidden';
+
+    // Populate workspace list — exclude workspaces that already contain this doc
+    const eligible = workspaces.filter(ws => !(ws.document_ids || []).includes(docId));
+    if (eligible.length === 0) {
+        addToWsList.innerHTML = '<p class="text-xs text-outline italic">This document is already in all your workspaces.</p>';
+        confirmAddToWsBtn.disabled = true;
+    } else {
+        confirmAddToWsBtn.disabled = false;
+        addToWsList.innerHTML = eligible.map(ws => `
+            <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-surface-container rounded cursor-pointer group text-outline hover:text-white transition-colors">
+                <input type="checkbox" value="${ws.id}" class="rounded border-outline-variant/30 text-secondary focus:ring-secondary bg-background">
+                <span class="material-symbols-outlined text-sm text-secondary">grid_view</span>
+                <span class="text-sm truncate flex-1">${ws.name}</span>
+                <span class="text-[10px] text-outline">${(ws.document_ids || []).length} doc${(ws.document_ids || []).length !== 1 ? 's' : ''}</span>
+            </label>
+        `).join('');
+    }
+    addToWsModal.classList.remove('hidden');
+};
+
+confirmAddToWsBtn.addEventListener('click', async () => {
+    const checked = addToWsList.querySelectorAll('input[type="checkbox"]:checked');
+    if (checked.length === 0) {
+        showAddToWsStatus('Select at least one workspace.', true);
+        return;
+    }
+    confirmAddToWsBtn.disabled = true;
+    showAddToWsStatus(`Merging into ${checked.length} workspace${checked.length > 1 ? 's' : ''}...`, false);
+
+    const wsIds = Array.from(checked).map(c => c.value);
+    const results = await Promise.allSettled(
+        wsIds.map(wsId =>
+            fetch(`${API_BASE_URL}/workspace/${wsId}/add-document`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ document_id: _addToWsDocId })
+            }).then(r => r.json())
+        )
+    );
+
+    const successes = results.filter(r => r.status === 'fulfilled' && r.value.success);
+    const failures = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success));
+
+    if (failures.length === 0) {
+        showAddToWsStatus(`✓ Merged into ${successes.length} workspace${successes.length > 1 ? 's' : ''}!`, false);
+        loadWorkspaces();
+        setTimeout(closeAddToWs, 1400);
+    } else {
+        const errMsg = failures[0].value?.error || failures[0].reason?.message || 'Unknown error';
+        showAddToWsStatus(`⚠️ ${errMsg}`, true);
+        loadWorkspaces();
+    }
+    confirmAddToWsBtn.disabled = false;
+});
+
+function showAddToWsStatus(msg, isError) {
+    addToWsStatus.textContent = msg;
+    addToWsStatus.classList.remove('hidden', 'text-red-400', 'text-secondary');
+    addToWsStatus.classList.add(isError ? 'text-red-400' : 'text-secondary');
+}
 
 // Status Helper
 function showStatus(el, msg, isError = false) {
@@ -191,14 +285,16 @@ function renderDocuments() {
         const icon = doc.type === 'youtube' ? 'smart_display' : doc.type === 'audio' ? 'mic' : 'description';
         const color = doc.type === 'youtube' ? 'text-red-400' : doc.type === 'audio' ? 'text-tertiary' : 'text-primary';
         const activeClass = isSel ? 'bg-gradient-to-r from-[#d0bcff]/10 to-transparent text-[#d0bcff] border-l-2 border-[#d0bcff]' : 'text-[#958ea0] hover:bg-[#2a2a2a] hover:text-white border-l-2 border-transparent';
+        const safeDocName = doc.name.replace(/'/g, "\\'");
 
-        return `<div class="flex justify-between items-center group px-4 py-3 cursor-pointer transition-all ${activeClass}" onclick="selectDocument('${doc.id}', '${doc.name}')">
+        return `<div class="flex justify-between items-center group px-4 py-3 cursor-pointer transition-all ${activeClass}" onclick="selectDocument('${doc.id}', '${safeDocName}')">
             <div class="flex items-center gap-4 truncate">
                 <span class="material-symbols-outlined text-xl ${color}">${icon}</span>
                 <span class="font-label text-sm tracking-wide truncate pr-2">${doc.name}</span>
             </div>
             <div class="flex gap-2">
-                <button class="material-symbols-outlined text-sm opacity-0 group-hover:opacity-100 hover:text-primary transition-opacity" onclick="event.stopPropagation(); renameItem('document', '${doc.id}', '${doc.name}')">edit</button>
+                <button class="material-symbols-outlined text-sm opacity-0 group-hover:opacity-100 hover:text-secondary transition-opacity" title="Add to Workspace" onclick="event.stopPropagation(); addDocToWorkspace('${doc.id}', '${safeDocName}')">library_add</button>
+                <button class="material-symbols-outlined text-sm opacity-0 group-hover:opacity-100 hover:text-primary transition-opacity" onclick="event.stopPropagation(); renameItem('document', '${doc.id}', '${safeDocName}')">edit</button>
                 <button class="material-symbols-outlined text-sm opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity" onclick="event.stopPropagation(); deleteDocument('${doc.id}')">delete</button>
             </div>
         </div>`;

@@ -289,6 +289,38 @@
         </div>
     </div>
 
+    <!-- Add to Workspace Modal -->
+    <div id="addToWsModal" class="fixed inset-0 z-[200] hidden items-center justify-center flex">
+        <div class="absolute inset-0 bg-background/80 backdrop-blur-md" id="addToWsOverlay"></div>
+        <div
+            class="relative w-[90%] max-w-md bg-surface-container border border-outline-variant/20 rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div class="flex justify-between items-center mb-2">
+                <div>
+                    <h2 class="font-headline text-xl text-secondary font-bold">Add to Workspace</h2>
+                    <p id="addToWsDocName" class="text-xs text-outline mt-0.5 truncate max-w-[280px]"></p>
+                </div>
+                <button id="closeAddToWsBtn" class="text-outline hover:text-white ml-4 shrink-0"><span
+                        class="material-symbols-outlined">close</span></button>
+            </div>
+            <p class="text-[12px] text-outline mb-4">Select workspaces to merge this document into:</p>
+
+            <div id="addToWsList"
+                class="bg-surface-container-low border border-outline-variant/10 rounded-xl p-3 max-h-52 overflow-y-auto flex flex-col space-y-2">
+                <!-- Javascript fills this -->
+            </div>
+
+            <div id="addToWsStatus" class="text-xs mt-3 hidden"></div>
+
+            <div class="flex justify-end gap-3 mt-5">
+                <button id="cancelAddToWsBtn"
+                    class="text-outline hover:text-white px-4 py-2 text-sm font-bold">Cancel</button>
+                <button id="confirmAddToWsBtn"
+                    class="bg-gradient-to-r from-secondary/80 to-secondary text-on-secondary px-6 py-2 rounded-lg text-sm font-bold transition-all shadow-[0_0_15px_rgba(76,215,246,0.3)] hover:scale-105 active:scale-95 disabled:opacity-40 disabled:pointer-events-none">Merge
+                    →</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Decorative Elements -->
     <div
         class="fixed top-[-10%] right-[-10%] w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] pointer-events-none z-[-1]">
