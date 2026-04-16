@@ -29,6 +29,8 @@ const addDocModal = document.getElementById('addDocModal');
 const addDocumentBtn = document.getElementById('addDocumentBtn');
 const closeAddDocBtn = document.getElementById('closeAddDocBtn');
 const addDocOverlay = document.getElementById('addDocOverlay');
+const directUploadWsBtn = document.getElementById('directUploadWsBtn');
+let _directUploadTargetWsId = null;
 
 const createWsModal = document.getElementById('createWsModal');
 const createWorkspaceBtn = document.getElementById('createWorkspaceBtn');
@@ -77,8 +79,12 @@ mobileOverlay.addEventListener('click', closeNav);
 
 // Add Doc Modal
 const openAddDoc = () => { addDocModal.classList.remove('hidden'); closeNav(); };
-const closeAddDoc = () => { addDocModal.classList.add('hidden'); };
+const closeAddDoc = () => { addDocModal.classList.add('hidden'); _directUploadTargetWsId = null; };
 addDocumentBtn.addEventListener('click', openAddDoc);
+directUploadWsBtn.addEventListener('click', () => {
+    _directUploadTargetWsId = currentWorkspaceId;
+    openAddDoc();
+});
 closeAddDocBtn.addEventListener('click', closeAddDoc);
 addDocOverlay.addEventListener('click', closeAddDoc);
 
@@ -205,7 +211,20 @@ processVideoBtn.addEventListener('click', async () => {
         if (!response.ok) throw new Error(data.error || 'Failed to process video');
 
         showStatus(videoStatus, `✓ Processed! ${data.chunks_created} chunks.`, false);
-        setTimeout(() => { closeAddDoc(); loadDocuments(); window.selectDocument(data.document_id, 'YouTube Video'); }, 1500);
+        if (_directUploadTargetWsId) {
+            showStatus(videoStatus, `Appending to Workspace...`, false);
+            try {
+                await fetch(`${API_BASE_URL}/workspace/${_directUploadTargetWsId}/add-document`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ document_id: data.document_id })
+                });
+                const wId = _directUploadTargetWsId; _directUploadTargetWsId = null;
+                setTimeout(() => { closeAddDoc(); loadDocuments(); loadWorkspaces(); window.selectWorkspace(wId, currentChatTitle.textContent); }, 1500);
+            } catch(ex){
+                showStatus(videoStatus, `Merge error: ${ex.message}`, true);
+            }
+        } else {
+            setTimeout(() => { closeAddDoc(); loadDocuments(); window.selectDocument(data.document_id, 'YouTube Video'); }, 1500);
+        }
     } catch (e) {
         showStatus(videoStatus, `Error: ${e.message}`, true);
     } finally {
@@ -227,7 +246,20 @@ pdfFile.addEventListener('change', async () => {
         if (!response.ok) throw new Error(data.error || 'Failed to process PDF');
 
         showStatus(pdfStatus, `✓ Success!`, false);
-        setTimeout(() => { closeAddDoc(); loadDocuments(); window.selectDocument(data.document_id, data.filename); }, 1500);
+        if (_directUploadTargetWsId) {
+            showStatus(pdfStatus, `Appending to Workspace...`, false);
+            try {
+                await fetch(`${API_BASE_URL}/workspace/${_directUploadTargetWsId}/add-document`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ document_id: data.document_id })
+                });
+                const wId = _directUploadTargetWsId; _directUploadTargetWsId = null;
+                setTimeout(() => { closeAddDoc(); loadDocuments(); loadWorkspaces(); window.selectWorkspace(wId, currentChatTitle.textContent); }, 1500);
+            } catch(ex){
+                showStatus(pdfStatus, `Merge error: ${ex.message}`, true);
+            }
+        } else {
+            setTimeout(() => { closeAddDoc(); loadDocuments(); window.selectDocument(data.document_id, data.filename); }, 1500);
+        }
     } catch (e) {
         showStatus(pdfStatus, `Error: ${e.message}`, true);
     }
@@ -251,7 +283,20 @@ audioFile.addEventListener('change', async () => {
         if (!response.ok) throw new Error(data.error || 'Failed to process audio');
 
         showStatus(audioStatus, `✓ Transcribed! ${data.chunks_created} chunks created.`, false);
-        setTimeout(() => { closeAddDoc(); loadDocuments(); window.selectDocument(data.document_id, data.filename); }, 1500);
+        if (_directUploadTargetWsId) {
+            showStatus(audioStatus, `Appending to Workspace...`, false);
+            try {
+                await fetch(`${API_BASE_URL}/workspace/${_directUploadTargetWsId}/add-document`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ document_id: data.document_id })
+                });
+                const wId = _directUploadTargetWsId; _directUploadTargetWsId = null;
+                setTimeout(() => { closeAddDoc(); loadDocuments(); loadWorkspaces(); window.selectWorkspace(wId, currentChatTitle.textContent); }, 1500);
+            } catch(ex){
+                showStatus(audioStatus, `Merge error: ${ex.message}`, true);
+            }
+        } else {
+            setTimeout(() => { closeAddDoc(); loadDocuments(); window.selectDocument(data.document_id, data.filename); }, 1500);
+        }
     } catch (e) {
         showStatus(audioStatus, `Error: ${e.message}`, true);
     } finally {
@@ -420,12 +465,14 @@ function resetChat() {
 // --- Chat Logic ---
 window.selectDocument = (id, name) => {
     currentDocumentId = id; currentWorkspaceId = null;
+    directUploadWsBtn.classList.add('hidden');
     currentChatTitle.textContent = name;
     currentChatType.innerHTML = `<span class="text-primary flex items-center gap-1"><span class="material-symbols-outlined text-sm">description</span> Document</span>`;
     initChatView(id);
 }
 window.selectWorkspace = (id, name) => {
     currentWorkspaceId = id; currentDocumentId = null;
+    directUploadWsBtn.classList.remove('hidden');
     currentChatTitle.textContent = name;
     currentChatType.innerHTML = `<span class="text-secondary flex items-center gap-1"><span class="material-symbols-outlined text-sm">grid_view</span> Workspace</span>`;
     initChatView(id);
