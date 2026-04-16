@@ -26,6 +26,7 @@ An AI-powered **Knowledge Workspace** that lets you have intelligent conversatio
 - 📄 **PDF Documents** — Upload and query any PDF document
 - 🎙️ **Audio Transcription** — Upload lecture recordings, podcasts, or any audio file — transcribed locally using faster-whisper (free, no API cost!)
 - 🧠 **Knowledge Workspaces** — Merge multiple documents (PDFs + Videos + Audio) into a unified AI brain and chat across all of them at once
+- ➕ **Seamless Merging** — Add new documents directly to existing workspaces with a single click (non-destructive appending)
 - ⚡ **Local Embeddings** — 10x faster processing with Sentence Transformers, no embedding API costs
 - 🗣️ **Local Transcription** — Audio files transcribed on-device using OpenAI's Whisper model via faster-whisper — completely free and private
 - 🔍 **RAG Technology** — ChromaDB vector database for intelligent, precise context retrieval
@@ -120,6 +121,7 @@ The standout feature of ChatFusion is **Knowledge Workspaces** — a multi-sourc
    - Click **+ Add Document** to process a YouTube URL, upload a PDF, or upload an audio file.
    - Your documents appear instantly in the left sidebar — click any to start chatting.
    - Click the **+** icon next to "Workspaces" to merge multiple documents into a unified Knowledge Workspace.
+   - Hover any document and click the **➕ (Add to Workspace)** icon to seamlessly merge it into an already-created workspace.
 
 ## 📖 How It Works
 
@@ -359,6 +361,12 @@ Create a new Knowledge Workspace from existing documents.
 { "name": "My Study Brain", "document_ids": ["id1", "id2"] }
 ```
 
+### `POST /api/workspace/<workspace_id>/add-document`
+Append an existing document's chunks into a previously created workspace (non-destructive).
+```json
+{ "document_id": "id3" }
+```
+
 ### `POST /api/workspace/chat`
 Chat with a merged Knowledge Workspace.
 ```json
@@ -408,7 +416,8 @@ Health check endpoint.
 - [ ] OCR support for scanned (image-based) PDFs
 - [ ] Document-level weightings in workspaces
 - [ ] Clickable timestamps in YouTube answers
-- [ ] Workspace editing (add/remove documents post-creation)
+- [x] Workspace editing: Add new documents post-creation
+- [ ] Workspace editing: Remove documents post-creation
 
 ## 💡 Why Local Processing?
 
