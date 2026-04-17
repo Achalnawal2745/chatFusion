@@ -1,49 +1,30 @@
 {
     "documents": {
+        "pdf_badf0cf3": {
+            "id": "pdf_badf0cf3",
+            "type": "pdf",
+            "name": "f2edasc.pdf",
+            "collection_name": "pdf_badf0cf3",
+            "chunks_count": 7,
+            "created_at": "2026-04-17T13:49:38.065102"
+        },
+        "pdf_6d60bc1b": {
+            "id": "pdf_6d60bc1b",
+            "type": "pdf",
+            "name": "Tutorial_5.pdf",
+            "collection_name": "pdf_6d60bc1b",
+            "chunks_count": 1,
+            "created_at": "2026-04-17T13:50:52.533515"
+        },
         "youtube_9kuynHcM3UA": {
             "id": "youtube_9kuynHcM3UA",
             "type": "youtube",
-            "name": "toc lecture",
+            "name": "YouTube Video (9kuynHcM...)",
             "video_id": "9kuynHcM3UA",
             "collection_name": "video_9kuynHcM3UA",
             "chunks_count": 236,
-            "created_at": "2026-04-15T10:13:24.027650"
-        },
-        "youtube_WJ-UaAaumNA": {
-            "id": "youtube_WJ-UaAaumNA",
-            "type": "youtube",
-            "name": "YouTube Video (WJ-UaAau...)",
-            "video_id": "WJ-UaAaumNA",
-            "collection_name": "video_WJ-UaAaumNA",
-            "chunks_count": 6,
-            "created_at": "2026-04-14T21:04:48.984959"
-        },
-        "youtube_povNcHSasgs": {
-            "id": "youtube_povNcHSasgs",
-            "type": "youtube",
-            "name": "YouTube Video (povNcHSa...)",
-            "video_id": "povNcHSasgs",
-            "collection_name": "video_povNcHSasgs",
-            "chunks_count": 4,
-            "created_at": "2026-04-14T21:05:20.740462"
-        },
-        "youtube_3MqyDWDpZoI": {
-            "id": "youtube_3MqyDWDpZoI",
-            "type": "youtube",
-            "name": "YouTube Video (3MqyDWDp...)",
-            "video_id": "3MqyDWDpZoI",
-            "collection_name": "video_3MqyDWDpZoI",
-            "chunks_count": 3,
-            "created_at": "2026-04-14T21:06:04.906523"
-        },
-        "youtube_qJ9hR4qq08Q": {
-            "id": "youtube_qJ9hR4qq08Q",
-            "type": "youtube",
-            "name": "tamil daa video",
-            "video_id": "qJ9hR4qq08Q",
-            "collection_name": "video_qJ9hR4qq08Q",
-            "chunks_count": 5,
-            "created_at": "2026-04-14T21:24:41.413467"
+            "parent_workspace_id": null,
+            "created_at": "2026-04-17T17:11:02.212859"
         },
         "audio_eb74532c": {
             "id": "audio_eb74532c",
@@ -53,7 +34,8 @@
             "chunks_count": 1,
             "transcript_length": 160,
             "language": "en",
-            "created_at": "2026-04-15T09:57:55.131823"
+            "created_at": "2026-04-15T09:57:55.131823",
+            "parent_workspace_id": "ws_d87fbf6d"
         },
         "pdf_032a63dd": {
             "id": "pdf_032a63dd",
@@ -70,32 +52,121 @@
             "collection_name": "pdf_7945311c",
             "chunks_count": 1,
             "created_at": "2026-04-17T00:16:37.273541"
+        },
+        "089009c9-9c5d-4089-95cf-2ffec744cd7e": {
+            "id": "089009c9-9c5d-4089-95cf-2ffec744cd7e",
+            "type": "image",
+            "name": "Screenshot_2026-04-10_181732.png",
+            "collection_name": "doc_089009c9-9c5d-4089-95cf-2ffec744cd7e",
+            "chunks_count": 1,
+            "created_at": "2026-04-17T11:09:52.273527"
+        },
+        "f6dce32e-019a-4ce2-a12b-600b1301044c": {
+            "id": "f6dce32e-019a-4ce2-a12b-600b1301044c",
+            "type": "note",
+            "name": "general",
+            "collection_name": "doc_f6dce32e-019a-4ce2-a12b-600b1301044c",
+            "chunks_count": 2,
+            "created_at": "2026-04-17T12:00:31.954999",
+            "parent_workspace_id": "ws_1220e0ed"
+        },
+        "note_a19f036e": {
+            "id": "note_a19f036e",
+            "type": "note",
+            "name": "Untitled Note",
+            "collection_name": "note_a19f036e",
+            "chunks_count": 1,
+            "created_at": "2026-04-17T15:09:16.072582",
+            "parent_workspace_id": "ws_d87fbf6d"
+        },
+        "note_932af06a": {
+            "id": "note_932af06a",
+            "type": "note",
+            "name": "Untitled Note",
+            "collection_name": "note_932af06a",
+            "chunks_count": 1,
+            "parent_workspace_id": "ws_d87fbf6d",
+            "created_at": "2026-04-17T15:13:23.153979"
+        },
+        "note_07b79675": {
+            "id": "note_07b79675",
+            "type": "note",
+            "name": "Untitled Note",
+            "collection_name": "note_07b79675",
+            "chunks_count": 1,
+            "parent_workspace_id": "ws_d87fbf6d",
+            "created_at": "2026-04-17T15:44:19.871643"
         }
     },
     "workspaces": {
         "ws_1220e0ed": {
             "id": "ws_1220e0ed",
             "name": "toc lecture + tut 5",
+            "type": "personal",
             "document_ids": [
                 "youtube_9kuynHcM3UA",
-                "pdf_94fe987c"
+                "pdf_94fe987c",
+                "725a9136-18ff-42df-9048-63dc66fc12f9",
+                "286b2f6a-c443-4881-a518-7d27ada7b32f",
+                "f2b20cbc-339a-48a1-9dd5-367044965aab",
+                "f6dce32e-019a-4ce2-a12b-600b1301044c"
             ],
+            "created_at": "2026-04-14T11:39:33.319934",
             "merged_collection": "workspace_merged_ws_1220e0ed",
-            "total_chunks": 237,
-            "created_at": "2026-04-14T11:39:33.319934"
+            "total_chunks": 2,
+            "sources": [
+                {
+                    "id": "youtube_9kuynHcM3UA",
+                    "name": "toc lecture",
+                    "type": "youtube"
+                },
+                {
+                    "id": "f6dce32e-019a-4ce2-a12b-600b1301044c",
+                    "name": "general",
+                    "type": "note"
+                }
+            ]
         },
         "ws_d87fbf6d": {
             "id": "ws_d87fbf6d",
             "name": "os",
+            "type": "personal",
             "document_ids": [
                 "youtube_WJ-UaAaumNA",
                 "youtube_povNcHSasgs",
                 "youtube_3MqyDWDpZoI",
-                "audio_eb74532c"
+                "audio_eb74532c",
+                "note_c0fa7b6c",
+                "note_a19f036e",
+                "note_932af06a",
+                "pdf_652a4729",
+                "note_07b79675"
             ],
+            "created_at": "2026-04-14T21:06:23.599614",
             "merged_collection": "workspace_merged_ws_d87fbf6d",
-            "total_chunks": 14,
-            "created_at": "2026-04-14T21:06:23.599614"
+            "total_chunks": 5,
+            "sources": [
+                {
+                    "id": "audio_eb74532c",
+                    "name": "Recording_2",
+                    "type": "audio"
+                },
+                {
+                    "id": "note_a19f036e",
+                    "name": "Untitled Note",
+                    "type": "note"
+                },
+                {
+                    "id": "note_932af06a",
+                    "name": "Untitled Note",
+                    "type": "note"
+                },
+                {
+                    "id": "note_07b79675",
+                    "name": "Untitled Note",
+                    "type": "note"
+                }
+            ]
         }
     }
 }

@@ -25,7 +25,9 @@ An AI-powered **Knowledge Workspace** that lets you have intelligent conversatio
 - 🎥 **YouTube Videos** — Extract and analyze video transcripts automatically
 - 📄 **PDF Documents** — Upload and query any PDF document
 - 🎙️ **Audio Transcription** — Upload lecture recordings, podcasts, or any audio file — transcribed locally using faster-whisper (free, no API cost!)
-- 🧠 **Knowledge Workspaces** — Merge multiple documents (PDFs + Videos + Audio) into a unified AI brain and chat across all of them at once
+- 🖼️ **Image OCR** — Extract text from diagrams, screenshots, or scanned pages automatically using EasyOCR.
+- 📝 **Direct Context Notes** — Jot down manual text notes and index them into the AI brain.
+- 🧠 **Knowledge Workspaces** — Merge multiple documents (PDFs + Videos + Audio + Images + Notes) into a unified AI brain and chat across all of them at once
 - ➕ **Seamless Merging** — Add new documents directly to existing workspaces with a single click (non-destructive appending)
 - ⚡ **Local Embeddings** — 10x faster processing with Sentence Transformers, no embedding API costs
 - 🗣️ **Local Transcription** — Audio files transcribed on-device using OpenAI's Whisper model via faster-whisper — completely free and private
@@ -57,8 +59,10 @@ The standout feature of ChatFusion is **Knowledge Workspaces** — a multi-sourc
 
 **Scenario**: You have a PDF tutorial, a YouTube lecture, and an audio recording on the same topic. Instead of chatting with each one separately, you can:
 1. Create a **Workspace** that merges all documents.
-2. Ask any question — the AI synthesizes a unified, comprehensive answer drawing from all sources at once.
-3. Results include a **Sources Used** panel showing exactly which document contributed which knowledge.
+2. Add new knowledge directly into the workspace (Direct Notes, Images, URLs). These are **Universally Isolated**—they stay inside your workspace and won't clutter your global document list.
+3. Every document added to a workspace functions as an **Independent Copy**. Deleting the original file from your computer or global list will *not* break your workspace.
+4. Ask any question — the AI synthesizes a unified, comprehensive answer drawing from all sources at once.
+5. Results include a **Sources Used** panel showing exactly which document contributed which knowledge.
 
 **Example queries that work beautifully across merged sources:**
 - "Solve Question 6 from the tutorial using steps from the video explanation."
@@ -181,6 +185,8 @@ When chatting with a Workspace, a specialized prompt instructs Gemini to:
 - ✅ YouTube videos with auto-generated or manual captions
 - ✅ PDF documents (text-based; scanned PDFs may have limited extraction)
 - ✅ Audio files: MP3, M4A, WAV, OGG, FLAC, AAC, WebM (up to 100MB)
+- ✅ Images: PNG, JPG, JPEG (uses local OCR)
+- ✅ Text notes: direct manual entry
 - ✅ Multiple documents of different types — mix freely in one Workspace
 - ❌ Videos without any captions (no transcript = no content)
 
@@ -410,14 +416,13 @@ Health check endpoint.
 - [ ] 📊 Quiz mode — AI-generated MCQs to test your knowledge
 - [ ] 📋 Export chat/notes to PDF or Markdown
 - [ ] 🌐 Website/article URL → chattable document
-- [ ] 📸 Image/slide upload with OCR text extraction
 - [ ] 🔗 Interactive mind maps from workspace content
 - [ ] Chat history export to Markdown or PDF
-- [ ] OCR support for scanned (image-based) PDFs
 - [ ] Document-level weightings in workspaces
 - [ ] Clickable timestamps in YouTube answers
 - [x] Workspace editing: Add new documents post-creation
-- [ ] Workspace editing: Remove documents post-creation
+- [x] Workspace editing: Seamless independent source copies
+- [x] Image/slide upload with OCR text extraction
 
 ## 💡 Why Local Processing?
 

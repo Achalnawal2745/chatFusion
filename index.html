@@ -5,6 +5,7 @@
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
     <title>ChatFusion | Knowledge Workspace</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
         rel="stylesheet" />
@@ -115,7 +116,33 @@
         class="fixed inset-y-0 left-0 z-[110] flex flex-col p-4 w-72 bg-[#1c1b1b]/90 backdrop-blur-2xl shadow-[40px_0_60px_-15px_rgba(0,0,0,0.5)] transform -translate-x-full transition-transform duration-300 md:translate-x-0"
         id="sidebar">
         <div class="mb-10 px-4 flex justify-between items-center">
-            <h1 class="font-headline font-bold text-[#d0bcff] text-2xl tracking-tight">ChatFusion</h1>
+            <h1 class="font-headline font-bold text-[#d0bcff] text-3xl tracking-tight flex items-center gap-3">
+                <svg width="48" height="48" viewBox="0 0 100 100" class="drop-shadow-[0_0_8px_rgba(85,22,190,0.4)]">
+                    <defs>
+                        <filter id="cyanGlow" x="-50%" y="-50%" width="200%" height="200%">
+                            <feGaussianBlur stdDeviation="3" result="blur" />
+                            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                        </filter>
+                    </defs>
+                    <!-- Connections -->
+                    <line x1="50" y1="50" x2="50" y2="16" stroke="#d0bcff" stroke-width="8" />
+                    <line x1="50" y1="50" x2="82" y2="38" stroke="#d0bcff" stroke-width="8" />
+                    <line x1="50" y1="50" x2="70" y2="75" stroke="#d0bcff" stroke-width="8" />
+                    <line x1="50" y1="50" x2="30" y2="75" stroke="#d0bcff" stroke-width="8" />
+                    <line x1="50" y1="50" x2="18" y2="38" stroke="#d0bcff" stroke-width="8" />
+                    <!-- Outer nodes -->
+                    <circle cx="50" cy="16" r="12" fill="#d0bcff" />
+                    <circle cx="82" cy="38" r="12" fill="#d0bcff" />
+                    <circle cx="70" cy="75" r="12" fill="#d0bcff" />
+                    <circle cx="30" cy="75" r="12" fill="#d0bcff" />
+                    <circle cx="18" cy="38" r="12" fill="#d0bcff" />
+                    <!-- Center node -->
+                    <circle cx="50" cy="50" r="18" fill="#d0bcff" />
+                    <!-- Glowing Spark highlight -->
+                    <circle cx="63" cy="65" r="12" fill="#ffffff" opacity="0.85" filter="url(#cyanGlow)" />
+                </svg>
+                ChatFusion
+            </h1>
             <button id="closeSidebarBtn" class="md:hidden text-outline hover:text-white"><span
                     class="material-symbols-outlined">close</span></button>
         </div>
@@ -163,7 +190,9 @@
                     Document</span>
             </div>
             <div class="flex items-center gap-4">
-                <button id="directUploadWsBtn" class="hidden text-xs bg-primary/20 hover:bg-primary text-primary hover:text-on-primary border border-primary/50 px-3 py-1.5 rounded-lg flex items-center gap-1 transition-all shadow-[0_0_10px_rgba(208,188,255,0.1)] hover:shadow-[0_0_15px_rgba(208,188,255,0.4)]"><span class="material-symbols-outlined text-[14px]">add_circle</span> Add Source</button>
+                <button id="directUploadWsBtn"
+                    class="hidden text-xs bg-primary/20 hover:bg-primary text-primary hover:text-on-primary border border-primary/50 px-3 py-1.5 rounded-lg flex items-center gap-1 transition-all shadow-[0_0_10px_rgba(208,188,255,0.1)] hover:shadow-[0_0_15px_rgba(208,188,255,0.4)]"><span
+                        class="material-symbols-outlined text-[14px]">add_circle</span> Add Source</button>
                 <span id="currentChatType"
                     class="text-outline text-[10px] md:text-sm tracking-widest uppercase font-bold"></span>
             </div>
@@ -173,6 +202,17 @@
         <section
             class="flex-1 pt-24 pb-32 px-4 md:px-12 max-w-4xl mx-auto w-full space-y-12 overflow-y-auto no-scrollbar"
             id="chatMessages">
+            
+            <!-- Sources Hub (Visible only in workspaces) -->
+            <div id="sourcesHub" class="hidden animate-in fade-in slide-in-from-top-4 duration-500">
+                <div class="flex flex-wrap gap-2 p-4 bg-surface-container-low/40 border border-outline-variant/10 rounded-2xl backdrop-blur-md">
+                    <span class="w-full text-[10px] uppercase tracking-[0.2em] text-outline mb-2 px-1">Active Sources</span>
+                    <div id="workspaceSourcesList" class="flex flex-wrap gap-2">
+                        <!-- Source chips injected here -->
+                    </div>
+                </div>
+            </div>
+
             <div class="flex items-center justify-center h-full text-outline/50 flex-col gap-4">
                 <span class="material-symbols-outlined text-6xl">chat_bubble</span>
                 <p>Select a document or workspace to start chatting.</p>
@@ -206,18 +246,19 @@
     <div id="addDocModal" class="fixed inset-0 z-[200] hidden items-center justify-center flex">
         <div class="absolute inset-0 bg-background/80 backdrop-blur-md" id="addDocOverlay"></div>
         <div
-            class="relative w-[90%] max-w-lg bg-surface-container border border-outline-variant/20 rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="font-headline text-xl text-primary font-bold">Add Document</h2>
+            class="relative w-[90%] max-w-xl bg-surface-container border border-outline-variant/20 rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200 overflow-y-auto max-h-[90vh] no-scrollbar">
+            <div class="flex justify-between items-center mb-6 sticky top-0 bg-surface-container z-10 pb-2">
+                <h2 class="font-headline text-xl text-primary font-bold">Add Source</h2>
                 <button id="closeAddDocBtn" class="text-outline hover:text-white"><span
                         class="material-symbols-outlined">close</span></button>
             </div>
 
-            <div class="space-y-6">
+            <div class="space-y-4">
                 <!-- YouTube Input -->
                 <div class="bg-surface-container-low p-4 rounded-xl border border-outline-variant/10">
-                    <h3 class="text-sm font-bold text-on-surface mb-2 flex items-center gap-2"><span
-                            class="material-symbols-outlined text-red-400">smart_display</span>YouTube Video</h3>
+                    <h3 class="text-sm font-bold text-on-surface mb-2 flex items-center gap-2">
+                        <span class="material-symbols-outlined text-red-400">smart_display</span>YouTube Video
+                    </h3>
                     <div class="flex gap-2 flex-col sm:flex-row">
                         <input type="text" id="videoUrl"
                             class="flex-1 bg-surface border border-outline-variant/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary text-white"
@@ -228,29 +269,78 @@
                     <div id="videoStatus" class="mt-2 text-xs text-secondary hidden">Processing...</div>
                 </div>
 
-                <!-- PDF Upload -->
-                <div class="bg-surface-container-low p-4 rounded-xl border border-outline-variant/10 pb-6 text-center">
-                    <h3 class="text-sm font-bold text-on-surface mb-2 flex flex-col items-center gap-2"><span
-                            class="material-symbols-outlined text-secondary text-3xl">upload_file</span>Upload PDF</h3>
-                    <p class="text-xs text-outline mb-4">Max size: 10MB</p>
-                    <input type="file" id="pdfFile" accept=".pdf" class="hidden" />
-                    <button id="uploadBtn"
-                        class="bg-secondary/20 text-secondary hover:bg-secondary hover:text-on-secondary px-6 py-2 rounded-lg text-sm font-bold transition-all">Choose
-                        PDF File</button>
-                    <div id="pdfStatus" class="mt-2 text-xs text-primary hidden">Uploading...</div>
-                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- PDF Upload -->
+                    <div class="bg-surface-container-low p-4 rounded-xl border border-outline-variant/10 text-center">
+                        <h3 class="text-sm font-bold text-on-surface mb-3 flex flex-col items-center gap-2">
+                            <span class="material-symbols-outlined text-blue-400 text-3xl">upload_file</span>Upload PDF
+                        </h3>
+                        <input type="file" id="pdfFile" accept=".pdf" class="hidden" />
+                        <button id="uploadBtn"
+                            class="w-full bg-blue-400/10 text-blue-400 hover:bg-blue-400 hover:text-on-primary px-4 py-2 rounded-lg text-sm font-bold transition-all">Choose
+                            PDF</button>
+                        <div id="pdfStatus" class="mt-2 text-xs text-blue-400 hidden">Uploading...</div>
+                    </div>
 
-                <!-- Audio Upload -->
-                <div class="bg-surface-container-low p-4 rounded-xl border border-outline-variant/10 pb-6 text-center">
-                    <h3 class="text-sm font-bold text-on-surface mb-2 flex flex-col items-center gap-2"><span
-                            class="material-symbols-outlined text-tertiary text-3xl">mic</span>Upload Audio</h3>
-                    <p class="text-xs text-outline mb-4">MP3, WAV, M4A, OGG, FLAC, AAC, WebM — Max 100MB</p>
-                    <input type="file" id="audioFile" accept=".mp3,.m4a,.wav,.ogg,.flac,.aac,.weba,.webm" class="hidden" />
-                    <button id="uploadAudioBtn"
-                        class="bg-tertiary/20 text-tertiary hover:bg-tertiary hover:text-on-tertiary px-6 py-2 rounded-lg text-sm font-bold transition-all">Choose
-                        Audio File</button>
-                    <div id="audioStatus" class="mt-2 text-xs text-tertiary hidden">Transcribing...</div>
+                    <!-- Audio Upload -->
+                    <div class="bg-surface-container-low p-4 rounded-xl border border-outline-variant/10 text-center">
+                        <h3 class="text-sm font-bold text-on-surface mb-3 flex flex-col items-center gap-2">
+                            <span class="material-symbols-outlined text-purple-400 text-3xl">mic</span>Upload Audio
+                        </h3>
+                        <input type="file" id="audioFile" accept=".mp3,.m4a,.wav,.ogg,.flac,.aac,.weba,.webm"
+                            class="hidden" />
+                        <button id="uploadAudioBtn"
+                            class="w-full bg-purple-400/10 text-purple-400 hover:bg-purple-400 hover:text-on-primary px-4 py-2 rounded-lg text-sm font-bold transition-all">Choose
+                            Audio</button>
+                        <div id="audioStatus" class="mt-2 text-xs text-purple-400 hidden">Transcribing...</div>
+                    </div>
+
+                    <!-- Image OCR -->
+                    <div class="bg-surface-container-low p-4 rounded-xl border border-outline-variant/10 text-center">
+                        <h3 class="text-sm font-bold text-on-surface mb-3 flex flex-col items-center gap-2">
+                            <span class="material-symbols-outlined text-indigo-400 text-3xl">image</span>Image
+                        </h3>
+                        <input type="file" id="imageFile" accept=".png,.jpg,.jpeg,.webp" class="hidden" />
+                        <button id="uploadImageBtn"
+                            class="w-full bg-indigo-400/10 text-indigo-400 hover:bg-indigo-400 hover:text-on-primary px-4 py-2 rounded-lg text-sm font-bold transition-all">Choose
+                            Image</button>
+                        <div id="imageStatus" class="mt-2 text-xs text-indigo-400 hidden">Extracting...</div>
+                    </div>
+
+                    <!-- Direct Note -->
+                    <div class="bg-surface-container-low p-4 rounded-xl border border-outline-variant/10 text-center">
+                        <h3 class="text-sm font-bold text-on-surface mb-3 flex flex-col items-center gap-2">
+                            <span class="material-symbols-outlined text-green-400 text-3xl">edit_note</span>Direct Note
+                        </h3>
+                        <button id="addNoteBtn"
+                            class="w-full bg-green-400/10 text-green-400 hover:bg-green-400 hover:text-on-primary px-4 py-2 rounded-lg text-sm font-bold transition-all">Create
+                            Note</button>
+                    </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Note Entry Modal -->
+    <div id="noteModal" class="fixed inset-0 z-[210] hidden items-center justify-center flex">
+        <div class="absolute inset-0 bg-background/80 backdrop-blur-md" id="noteOverlay"></div>
+        <div
+            class="relative w-[90%] max-w-2xl bg-surface-container border border-outline-variant/20 rounded-2xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="font-headline text-xl text-primary font-bold">New Note</h2>
+                <button id="closeNoteBtn" class="text-outline hover:text-white"><span
+                        class="material-symbols-outlined">close</span></button>
+            </div>
+            <div class="space-y-4">
+                <input type="text" id="noteTitle"
+                    class="w-full bg-surface border border-outline-variant/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary text-white"
+                    placeholder="Note Title..." />
+                <textarea id="noteText" rows="10"
+                    class="w-full bg-surface border border-outline-variant/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary text-white resize-none"
+                    placeholder="Enter your note or paste text here..."></textarea>
+                <button id="saveNoteBtn"
+                    class="w-full bg-primary text-on-primary px-6 py-3 rounded-xl text-sm font-bold hover:scale-[1.02] active:scale-95 transition-all">Save
+                    & Index Note</button>
             </div>
         </div>
     </div>

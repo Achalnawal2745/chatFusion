@@ -21,6 +21,9 @@ import PyPDF2
 from werkzeug.utils import secure_filename
 import uuid
 from datetime import datetime
+import easyocr
+import numpy as np
+import cv2
 
 # Load environment variables
 load_dotenv()
@@ -47,12 +50,17 @@ from faster_whisper import WhisperModel
 whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
 print("Whisper model loaded!")
 
+# Initialize EasyOCR for local image text extraction
+print("Loading EasyOCR reader (en)...")
+ocr_reader = easyocr.Reader(['en'], gpu=False) # Set gpu=True if CUDA is available
+print("EasyOCR reader loaded!")
+
 # Initialize ChromaDB with persistent storage
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 
 # Configure file uploads
 UPLOAD_FOLDER = './uploads'
-ALLOWED_EXTENSIONS = {'pdf'}
+ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg', 'webp'}
 ALLOWED_AUDIO_EXTENSIONS = {'mp3', 'm4a', 'wav', 'ogg', 'flac', 'aac', 'weba', 'webm'}
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB (for audio files)
 
@@ -78,8 +86,48 @@ def load_registry():
         try:
             with open(REGISTRY_FILE, 'r') as f:
                 data = json.load(f)
-                documents_registry = data.get('documents', {})
-                workspaces = data.get('workspaces', {})
+                # Try all possible key names for documents
+                documents_registry = data.get('documents') or data.get('sources') or {}
+                
+                # Try all possible key names for workspaces
+                # Priority: 'workspaces' (new), then 'personal_spaces' (reverted style), then 'spaces'
+                workspaces = data.get('workspaces') or data.get('personal_spaces') or data.get('spaces') or {}
+                
+                # Patch existing orphaned sources that are in workspaces
+                try:
+                    patched = False
+                    for ws_id, ws in workspaces.items():
+                        # Auto-upgrade older workspaces with independent sources array
+                        if 'sources' not in ws:
+                            ws['sources'] = []
+                            patched = True
+                        
+                        existing_source_ids = [s['id'] for s in ws['sources']]
+                        
+                        for doc_id in ws.get('document_ids', []):
+                            if doc_id in documents_registry:
+                                doc = documents_registry[doc_id]
+                                
+                                # Protect source lists so global delete doesn't break them
+                                if doc_id not in existing_source_ids:
+                                    ws['sources'].append({
+                                        'id': doc['id'],
+                                        'name': doc.get('name', 'Unknown'),
+                                        'type': doc.get('type', 'unknown')
+                                    })
+                                    patched = True
+                                
+                                # Isolate workspace-exclusive documents from global view
+                                if not doc.get('parent_workspace_id'):
+                                    doc['parent_workspace_id'] = ws_id
+                                    patched = True
+                                    print(f"🩹 Patched orphan source {doc_id} to workspace {ws_id}")
+                    if patched:
+                        save_registry()
+                except Exception as e:
+                    print(f"Warning: Registry patch failed: {str(e)}")
+
+                print(f"Loaded {len(documents_registry)} documents and {len(workspaces)} workspaces.")
         except Exception as e:
             print(f"Error loading registry: {e}")
 
@@ -123,8 +171,13 @@ def chunk_transcript(transcript, chunk_size=500, overlap=100):
     # Combine into chunks
     current_chunk = []
     current_length = 0
+    current_start_time = None
     
     for i, part in enumerate(text_parts):
+        # Anchor the start time strictly to the first snippet that enters the chunk
+        if current_start_time is None:
+            current_start_time = part['start']
+            
         words = part['text'].split()
         current_chunk.extend(words)
         current_length += len(words)
@@ -133,18 +186,20 @@ def chunk_transcript(transcript, chunk_size=500, overlap=100):
             chunk_text = ' '.join(current_chunk)
             chunks.append({
                 'text': chunk_text,
-                'start_time': text_parts[max(0, i - len(current_chunk) + 1)]['start']
+                'start_time': current_start_time
             })
             
             # Keep overlap for next chunk
             current_chunk = current_chunk[-overlap:] if len(current_chunk) > overlap else []
             current_length = len(current_chunk)
+            # Reset start time anchor so it grabs the next snippet's timestamp
+            current_start_time = None
     
     # Add remaining text
     if current_chunk:
         chunks.append({
             'text': ' '.join(current_chunk),
-            'start_time': text_parts[-1]['start']
+            'start_time': current_start_time if current_start_time is not None else text_parts[-1]['start']
         })
     
     return chunks
@@ -207,7 +262,11 @@ def process_video():
     try:
         data = request.json
         video_url = data.get('url')
+        workspace_id = data.get('workspace_id')
         
+        if workspace_id and workspace_id not in workspaces:
+            return jsonify({'error': 'Target workspace not found'}), 404
+            
         if not video_url:
             return jsonify({'error': 'No URL provided'}), 400
         
@@ -257,8 +316,20 @@ def process_video():
                     else:
                         raise NoTranscriptFound("No transcripts available")
             
-            # Convert snippets to the expected format
-            transcript = [{'text': snippet.text, 'start': snippet.start} for snippet in transcript_data.snippets]
+            # Convert snippets to the expected format.
+            # Depending on youtube-transcript-api version, it returns a dict list directly, or objects.
+            try:
+                if hasattr(transcript_data[0], 'text'):
+                    transcript = [{'text': s.text, 'start': float(s.start)} for s in transcript_data]
+                else:
+                    transcript = [{'text': s.get('text', ''), 'start': float(s.get('start', 0.0))} for s in transcript_data]
+            except Exception as inner_e:
+                # Fallback to older snippet format if necessary
+                if hasattr(transcript_data, 'snippets'):
+                    transcript = [{'text': getattr(s, 'text', ''), 'start': float(getattr(s, 'start', 0.0))} for s in transcript_data.snippets]
+                else:
+                    raise inner_e
+                
         except TranscriptsDisabled:
             return jsonify({'error': 'Transcripts are disabled for this video'}), 400
         except NoTranscriptFound:
@@ -307,6 +378,7 @@ def process_video():
             'video_id': video_id,
             'collection_name': collection_name,
             'chunks_count': len(chunks),
+            'parent_workspace_id': workspace_id,
             'created_at': datetime.now().isoformat()
         }
         save_registry()
@@ -336,6 +408,10 @@ def process_pdf():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
         
+        workspace_id = request.form.get('workspace_id')
+        if workspace_id and workspace_id not in workspaces:
+            return jsonify({'error': 'Target workspace not found'}), 404
+            
         if not allowed_file(file.filename):
             return jsonify({'error': 'Invalid file type. Only PDF files are allowed.'}), 400
         
@@ -343,6 +419,14 @@ def process_pdf():
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
+        
+        workspace_id = request.form.get('workspace_id')
+        
+        # Validate workspace_id if provided
+        if workspace_id and workspace_id not in workspaces:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            return jsonify({'error': 'Invalid workspace_id: workspace not found'}), 400
         
         try:
             # Extract text from PDF
@@ -393,6 +477,7 @@ def process_pdf():
                 'name': filename,
                 'collection_name': collection_name,
                 'chunks_count': len(chunks),
+                'parent_workspace_id': workspace_id,
                 'created_at': datetime.now().isoformat()
             }
             save_registry()
@@ -411,6 +496,150 @@ def process_pdf():
                 os.remove(filepath)
     
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/process-image', methods=['POST'])
+def process_image():
+    """Process Image file using OCR and create embeddings"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+            
+        workspace_id = request.form.get('workspace_id')
+        if workspace_id and workspace_id not in workspaces:
+            return jsonify({'error': 'Target workspace not found'}), 404
+        
+        if not allowed_file(file.filename):
+            return jsonify({'error': 'Invalid file type.'}), 400
+        
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        workspace_id = request.form.get('workspace_id')
+        
+        # Validate workspace_id if provided
+        if workspace_id and workspace_id not in workspaces:
+            return jsonify({'error': 'Invalid workspace_id: workspace not found'}), 400
+        
+        try:
+            print(f"🖼️ OCR Processing: {filename}")
+            results = ocr_reader.readtext(filepath)
+            extracted_text = " ".join([res[1] for res in results])
+            
+            if not extracted_text or len(extracted_text.strip()) < 10:
+                return jsonify({'error': 'No significant text found in image'}), 400
+            
+            chunks = chunk_text(extracted_text)
+            doc_id = f"image_{str(uuid.uuid4())[:8]}"
+            collection_name = doc_id
+            
+            try:
+                chroma_client.delete_collection(collection_name)
+            except:
+                pass
+            
+            collection = chroma_client.create_collection(
+                name=collection_name,
+                metadata={"document_id": doc_id, "filename": filename, "source": "ocr"}
+            )
+            
+            texts = [chunk['text'] for chunk in chunks]
+            metadatas = [{'chunk_index': chunk['chunk_index'], 'filename': filename} for chunk in chunks]
+            ids = [f"chunk_{i}" for i in range(len(chunks))]
+            
+            embeddings = embedding_model.encode(texts, show_progress_bar=True).tolist()
+            collection.add(embeddings=embeddings, documents=texts, metadatas=metadatas, ids=ids)
+            
+            documents_registry[doc_id] = {
+                'id': doc_id,
+                'type': 'image',
+                'name': f"OCR: {filename}",
+                'collection_name': collection_name,
+                'chunks_count': len(chunks),
+                'parent_workspace_id': workspace_id,
+                'created_at': datetime.now().isoformat()
+            }
+            save_registry()
+            
+            return jsonify({
+                'success': True,
+                'document_id': doc_id,
+                'filename': filename,
+                'chunks_created': len(chunks),
+                'message': 'Image text extracted and indexed'
+            })
+            
+        finally:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/process-text', methods=['POST'])
+def process_text():
+    """Process manual text entry (Note)"""
+    try:
+        data = request.json
+        title = data.get('title', 'Untitled Note')
+        text = data.get('text', '')
+        parent_workspace_id = data.get('workspace_id')
+        
+        if parent_workspace_id and parent_workspace_id not in workspaces:
+            return jsonify({'error': 'Target workspace not found'}), 404
+            
+        if not text:
+            return jsonify({'error': 'No text provided'}), 400
+        
+        # Chunk the text
+        chunks = chunk_text(text)
+        
+        # Create collection for this Note
+        doc_id = f"note_{str(uuid.uuid4())[:8]}"
+        collection_name = doc_id
+        
+        collection = chroma_client.create_collection(name=collection_name)
+        
+        # Add chunks to collection
+        texts = [c['text'] for c in chunks]
+        embeddings = embedding_model.encode(texts, show_progress_bar=False).tolist()
+        metadatas = [{'source': title, 'index': i, 'type': 'note'} for i in range(len(chunks))]
+        collection.add(
+            embeddings=embeddings,
+            documents=texts,
+            metadatas=metadatas,
+            ids=[f"{doc_id}_{i}" for i in range(len(chunks))]
+        )
+        
+        # Add to registry
+        doc_info = {
+            'id': doc_id,
+            'type': 'note',
+            'name': title,
+            'collection_name': collection_name,
+            'chunks_count': len(chunks),
+            'parent_workspace_id': parent_workspace_id,
+            'created_at': datetime.now().isoformat()
+        }
+        documents_registry[doc_id] = doc_info
+        save_registry()
+        
+        return jsonify({
+            'success': True,
+            'document_id': doc_id,
+            'title': title,
+            'chunks_count': len(chunks)
+        })
+    except Exception as e:
+        import traceback
+        print(f"Text processing error: {traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -433,6 +662,10 @@ def process_audio():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
         base_name = os.path.splitext(filename)[0]
+        
+        workspace_id = request.form.get('workspace_id')
+        if workspace_id and workspace_id not in workspaces:
+            return jsonify({'error': 'Target workspace not found'}), 404
 
         try:
             print(f"🎙️ Transcribing audio: {filename} using faster-whisper (local)...")
@@ -496,6 +729,7 @@ def process_audio():
                 'chunks_count': len(chunks),
                 'transcript_length': len(transcript_text),
                 'language': info.language,
+                'parent_workspace_id': workspace_id,
                 'created_at': datetime.now().isoformat()
             }
             save_registry()
@@ -547,6 +781,9 @@ def chat():
             query_embeddings=[query_embedding],
             n_results=5
         )
+        
+        if not results['documents'] or not results['documents'][0]:
+            return jsonify({'success': True, 'answer': "No relevant content found in this document.", 'sources_used': []})
         
         # Build context from retrieved chunks
         context_parts = []
@@ -605,17 +842,17 @@ Provide your response below:"""
         )
         
         # Build sources list (handle both YouTube and PDF metadata)
-        sources = []
+        sources_used = []
         for meta in results['metadatas'][0]:
             if 'start_time' in meta:
-                sources.append({'timestamp': meta['start_time']})
+                sources_used.append({'timestamp': meta['start_time']})
             elif 'chunk_index' in meta:
-                sources.append({'chunk': meta['chunk_index']})
+                sources_used.append({'chunk': meta['chunk_index']})
         
         return jsonify({
             'success': True,
             'answer': response.text,
-            'sources': sources
+            'sources_used': sources_used
         })
     
     except Exception as e:
@@ -647,12 +884,21 @@ def create_workspace():
             
         merged_collection = chroma_client.create_collection(merged_collection_name)
         
+        sources = []
         offset = 0
         for doc_id in document_ids:
             if doc_id not in documents_registry:
                 continue
                 
             doc_info = documents_registry[doc_id]
+            
+            # Store independent metadata copy for the workspace
+            sources.append({
+                'id': doc_info['id'],
+                'name': doc_info['name'],
+                'type': doc_info['type']
+            })
+            
             source_collection = chroma_client.get_collection(doc_info['collection_name'])
             
             all_chunks = source_collection.get(include=['documents', 'metadatas', 'embeddings'])
@@ -682,6 +928,7 @@ def create_workspace():
             'id': workspace_id,
             'name': name,
             'document_ids': document_ids,
+            'sources': sources,
             'merged_collection': merged_collection_name,
             'total_chunks': offset,
             'created_at': datetime.now().isoformat()
@@ -833,6 +1080,21 @@ def delete_workspace(workspace_id):
             print(f"Warning: Could not delete merged collection {workspace['merged_collection']}: {str(e)}")
             
         del workspaces[workspace_id]
+        
+        # Completely destroy native documents uploaded into this workspace
+        docs_to_delete = []
+        for doc_id, doc in documents_registry.items():
+            if doc.get('parent_workspace_id') == workspace_id:
+                docs_to_delete.append(doc_id)
+                
+        for doc_id in docs_to_delete:
+            native_doc = documents_registry[doc_id]
+            try:
+                chroma_client.delete_collection(native_doc['collection_name'])
+            except:
+                pass
+            del documents_registry[doc_id]
+            
         save_registry()
         
         return jsonify({
@@ -858,6 +1120,12 @@ def add_document_to_workspace(workspace_id):
 
         if document_id not in documents_registry:
             return jsonify({'error': 'Document not found'}), 404
+
+        # Automatically tag notes with the workspace ID for isolation
+        doc = documents_registry[document_id]
+        if doc.get('type') == 'note' and not doc.get('parent_workspace_id'):
+            doc['parent_workspace_id'] = workspace_id
+            print(f"📌 Auto-tagging note {document_id} with workspace {workspace_id}")
 
         workspace = workspaces[workspace_id]
 
@@ -894,8 +1162,22 @@ def add_document_to_workspace(workspace_id):
                 ids=[f"merged_{document_id}_{existing_count + i}"]
             )
 
+        # Ensure workspace has a sources array
+        if 'sources' not in workspace:
+            workspace['sources'] = []
+
         # Update workspace metadata
-        workspace['document_ids'].append(document_id)
+        if document_id not in workspace.get('document_ids', []):
+            workspace.setdefault('document_ids', []).append(document_id)
+            
+        # Avoid duplicate source entries when appending multiple times
+        if not any(s['id'] == document_id for s in workspace['sources']):
+            workspace['sources'].append({
+                'id': doc_info['id'], 
+                'name': doc_info['name'], 
+                'type': doc_info['type']
+            })
+
         workspace['total_chunks'] = workspace.get('total_chunks', 0) + len(all_chunks['documents'])
         save_registry()
 
@@ -948,6 +1230,17 @@ def delete_document(document_id):
         
         # Remove from registry
         del documents_registry[document_id]
+        
+        # Clean up stale workspace references
+        for ws_id, ws in workspaces.items():
+            if document_id in ws.get('document_ids', []):
+                try:
+                    ws['document_ids'].remove(document_id)
+                except ValueError:
+                    pass  # Already not in list
+            if 'sources' in ws:
+                ws['sources'] = [src for src in ws['sources'] if src['id'] != document_id]
+                
         save_registry()
         
         return jsonify({
@@ -973,6 +1266,14 @@ def rename_item():
         if item_type == 'document':
             if item_id in documents_registry:
                 documents_registry[item_id]['name'] = new_name
+                
+                # Propagate rename to all internal workspace copies
+                for ws in workspaces.values():
+                    if 'sources' in ws:
+                        for src in ws['sources']:
+                            if src['id'] == item_id:
+                                src['name'] = new_name
+                                
                 save_registry()
                 return jsonify({'success': True})
             return jsonify({'error': 'Document not found'}), 404
@@ -1007,5 +1308,9 @@ def serve_script():
 def serve_style():
     return send_from_directory('.', 'style.css')
 
+@app.route('/favicon.svg')
+def serve_favicon():
+    return send_from_directory('.', 'favicon.svg')
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, use_reloader=False)

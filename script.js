@@ -12,6 +12,7 @@ let workspaces = [];
 const documentsList = document.getElementById('documentsList');
 const workspacesList = document.getElementById('workspacesList');
 const chatMessages = document.getElementById('chatMessages');
+const sourcesHub = document.getElementById('sourcesHub');
 const chatInput = document.getElementById('chatInput');
 const sendBtn = document.getElementById('sendBtn');
 const chatFooter = document.getElementById('chatFooter');
@@ -64,6 +65,18 @@ const pdfStatus = document.getElementById('pdfStatus');
 const audioFile = document.getElementById('audioFile');
 const uploadAudioBtn = document.getElementById('uploadAudioBtn');
 const audioStatus = document.getElementById('audioStatus');
+const imageFile = document.getElementById('imageFile');
+const uploadImageBtn = document.getElementById('uploadImageBtn');
+const imageStatus = document.getElementById('imageStatus');
+
+// Note Modal Elements
+const addNoteBtn = document.getElementById('addNoteBtn');
+const noteModal = document.getElementById('noteModal');
+const closeNoteBtn = document.getElementById('closeNoteBtn');
+const noteOverlay = document.getElementById('noteOverlay');
+const noteTitle = document.getElementById('noteTitle');
+const noteText = document.getElementById('noteText');
+const saveNoteBtn = document.getElementById('saveNoteBtn');
 
 // --- Layout & Modals Logic ---
 menuBtn.addEventListener('click', () => {
@@ -79,8 +92,11 @@ mobileOverlay.addEventListener('click', closeNav);
 
 // Add Doc Modal
 const openAddDoc = () => { addDocModal.classList.remove('hidden'); closeNav(); };
-const closeAddDoc = () => { addDocModal.classList.add('hidden'); _directUploadTargetWsId = null; };
-addDocumentBtn.addEventListener('click', openAddDoc);
+const closeAddDoc = (keepId = false) => { 
+    addDocModal.classList.add('hidden'); 
+    if (!keepId) _directUploadTargetWsId = null; 
+};
+addDocumentBtn.addEventListener('click', () => openAddDoc());
 directUploadWsBtn.addEventListener('click', () => {
     _directUploadTargetWsId = currentWorkspaceId;
     openAddDoc();
@@ -98,6 +114,17 @@ const openCreateWs = () => {
     workspaceCreateStatus.className = 'text-xs mt-2 hidden';
 };
 const closeCreateWs = () => { createWsModal.classList.add('hidden'); };
+createWorkspaceBtn.addEventListener('click', openCreateWs);
+closeCreateWsBtn.addEventListener('click', closeCreateWs);
+createWsOverlay.addEventListener('click', closeCreateWs);
+cancelWorkspaceBtn.addEventListener('click', closeCreateWs);
+
+// Note Modal
+const openNote = () => { noteModal.classList.remove('hidden'); closeAddDoc(true); };
+const closeNote = () => { noteModal.classList.add('hidden'); };
+addNoteBtn.addEventListener('click', openNote);
+closeNoteBtn.addEventListener('click', closeNote);
+noteOverlay.addEventListener('click', closeNote);
 createWorkspaceBtn.addEventListener('click', openCreateWs);
 closeCreateWsBtn.addEventListener('click', closeCreateWs);
 cancelWorkspaceBtn.addEventListener('click', closeCreateWs);
@@ -206,7 +233,9 @@ processVideoBtn.addEventListener('click', async () => {
     showStatus(videoStatus, 'Processing video...', false);
 
     try {
-        const response = await fetch(`${API_BASE_URL}/process-video`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+        const payload = { url };
+        if (_directUploadTargetWsId) payload.workspace_id = _directUploadTargetWsId;
+        const response = await fetch(`${API_BASE_URL}/process-video`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Failed to process video');
 
@@ -219,7 +248,7 @@ processVideoBtn.addEventListener('click', async () => {
                 });
                 const wId = _directUploadTargetWsId; _directUploadTargetWsId = null;
                 setTimeout(() => { closeAddDoc(); loadDocuments(); loadWorkspaces(); window.selectWorkspace(wId, currentChatTitle.textContent); }, 1500);
-            } catch(ex){
+            } catch (ex) {
                 showStatus(videoStatus, `Merge error: ${ex.message}`, true);
             }
         } else {
@@ -239,7 +268,10 @@ pdfFile.addEventListener('change', async () => {
     if (!file.name.endsWith('.pdf')) { showStatus(pdfStatus, 'Select a PDF.', true); return; }
     showStatus(pdfStatus, `Uploading ${file.name}...`, false);
 
-    const formData = new FormData(); formData.append('file', file);
+    const formData = new FormData(); 
+    formData.append('file', file);
+    if (_directUploadTargetWsId) formData.append('workspace_id', _directUploadTargetWsId);
+
     try {
         const response = await fetch(`${API_BASE_URL}/process-pdf`, { method: 'POST', body: formData });
         const data = await response.json();
@@ -254,7 +286,7 @@ pdfFile.addEventListener('change', async () => {
                 });
                 const wId = _directUploadTargetWsId; _directUploadTargetWsId = null;
                 setTimeout(() => { closeAddDoc(); loadDocuments(); loadWorkspaces(); window.selectWorkspace(wId, currentChatTitle.textContent); }, 1500);
-            } catch(ex){
+            } catch (ex) {
                 showStatus(pdfStatus, `Merge error: ${ex.message}`, true);
             }
         } else {
@@ -276,7 +308,10 @@ audioFile.addEventListener('change', async () => {
     showStatus(audioStatus, `Transcribing ${file.name}... this may take a minute.`, false);
     uploadAudioBtn.disabled = true; uploadAudioBtn.innerText = '⏳ Processing...';
 
-    const formData = new FormData(); formData.append('file', file);
+    const formData = new FormData(); 
+    formData.append('file', file);
+    if (_directUploadTargetWsId) formData.append('workspace_id', _directUploadTargetWsId);
+
     try {
         const response = await fetch(`${API_BASE_URL}/process-audio`, { method: 'POST', body: formData });
         const data = await response.json();
@@ -291,7 +326,7 @@ audioFile.addEventListener('change', async () => {
                 });
                 const wId = _directUploadTargetWsId; _directUploadTargetWsId = null;
                 setTimeout(() => { closeAddDoc(); loadDocuments(); loadWorkspaces(); window.selectWorkspace(wId, currentChatTitle.textContent); }, 1500);
-            } catch(ex){
+            } catch (ex) {
                 showStatus(audioStatus, `Merge error: ${ex.message}`, true);
             }
         } else {
@@ -301,6 +336,77 @@ audioFile.addEventListener('change', async () => {
         showStatus(audioStatus, `Error: ${e.message}`, true);
     } finally {
         uploadAudioBtn.disabled = false; uploadAudioBtn.innerText = 'Choose Audio File';
+    }
+});
+
+// Image OCR
+uploadImageBtn.addEventListener('click', () => imageFile.click());
+imageFile.addEventListener('change', async () => {
+    const file = imageFile.files[0];
+    if (!file) return;
+    showStatus(imageStatus, `Extracting text from ${file.name}...`, false);
+    uploadImageBtn.disabled = true;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    if (_directUploadTargetWsId) formData.append('workspace_id', _directUploadTargetWsId);
+    try {
+        const response = await fetch(`${API_BASE_URL}/process-image`, { method: 'POST', body: formData });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to extract text');
+
+        showStatus(imageStatus, `✓ OCR Success!`, false);
+        if (_directUploadTargetWsId) {
+            const wId = _directUploadTargetWsId; _directUploadTargetWsId = null;
+            await fetch(`${API_BASE_URL}/workspace/${wId}/add-document`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ document_id: data.document_id })
+            });
+            setTimeout(() => { closeAddDoc(); loadDocuments(); loadWorkspaces(); window.selectWorkspace(wId, currentChatTitle.textContent); }, 1500);
+        } else {
+            setTimeout(() => { closeAddDoc(); loadDocuments(); window.selectDocument(data.document_id, `OCR: ${file.name}`); }, 1500);
+        }
+    } catch (e) {
+        showStatus(imageStatus, `Error: ${e.message}`, true);
+    } finally {
+        uploadImageBtn.disabled = false;
+    }
+});
+
+// Note Synthesis
+saveNoteBtn.addEventListener('click', async () => {
+    const title = noteTitle.value.trim();
+    const text = noteText.value.trim();
+    if (!text) { alert('Please enter some text'); return; }
+    
+    saveNoteBtn.disabled = true;
+    saveNoteBtn.innerText = '⏳ Saving...';
+
+    try {
+        const payload = { title: title || 'Untitled Note', text };
+        if (_directUploadTargetWsId) payload.workspace_id = _directUploadTargetWsId;
+
+        const res = await fetch(`${API_BASE_URL}/process-text`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        if (_directUploadTargetWsId) {
+            const wId = _directUploadTargetWsId; _directUploadTargetWsId = null;
+            await fetch(`${API_BASE_URL}/workspace/${wId}/add-document`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ document_id: data.document_id })
+            });
+            setTimeout(() => { closeNote(); loadDocuments(); loadWorkspaces(); window.selectWorkspace(wId, currentChatTitle.textContent); }, 1000);
+        } else {
+            setTimeout(() => { closeNote(); loadDocuments(); window.selectDocument(data.document_id, data.title); }, 1000);
+        }
+    } catch (e) {
+        alert(`Error: ${e.message}`);
+    } finally {
+        saveNoteBtn.disabled = false;
+        saveNoteBtn.innerText = 'Save & Index Note';
     }
 });
 
@@ -325,12 +431,22 @@ function renderDocuments() {
     if (documents.length === 0) {
         documentsList.innerHTML = `<div class="text-xs text-outline px-4 italic">No documents yet</div>`; return;
     }
-    documentsList.innerHTML = documents.map(doc => {
+    documentsList.innerHTML = [...documents]
+        .filter(doc => !doc.parent_workspace_id) // Keep workspace-specific notes out of the global list
+        .reverse()
+        .map(doc => {
         const isSel = doc.id === currentDocumentId;
-        const icon = doc.type === 'youtube' ? 'smart_display' : doc.type === 'audio' ? 'mic' : 'description';
-        const color = doc.type === 'youtube' ? 'text-red-400' : doc.type === 'audio' ? 'text-tertiary' : 'text-primary';
-        const activeClass = isSel ? 'bg-gradient-to-r from-[#d0bcff]/10 to-transparent text-[#d0bcff] border-l-2 border-[#d0bcff]' : 'text-[#958ea0] hover:bg-[#2a2a2a] hover:text-white border-l-2 border-transparent';
-        const safeDocName = doc.name.replace(/'/g, "\\'");
+        
+        let icon = 'description';
+        let color = 'text-primary';
+        
+        if (doc.type === 'youtube') { icon = 'smart_display'; color = 'text-red-400'; }
+        else if (doc.type === 'audio') { icon = 'mic'; color = 'text-purple-400'; }
+        else if (doc.type === 'image') { icon = 'image'; color = 'text-indigo-400'; }
+        else if (doc.type === 'note') { icon = 'edit_note'; color = 'text-green-400'; }
+        
+        const activeClass = isSel ? `bg-gradient-to-r from-primary/10 to-transparent text-primary border-l-2 border-primary` : 'text-[#958ea0] hover:bg-[#2a2a2a] hover:text-white border-l-2 border-transparent';
+        const safeDocName = doc.name.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
         return `<div class="flex justify-between items-center group px-4 py-3 cursor-pointer transition-all ${activeClass}" onclick="selectDocument('${doc.id}', '${safeDocName}')">
             <div class="flex items-center gap-4 truncate">
@@ -350,16 +466,18 @@ function renderWorkspaces() {
     if (workspaces.length === 0) {
         workspacesList.innerHTML = `<div class="text-xs text-outline px-4 italic">No workspaces yet</div>`; return;
     }
-    workspacesList.innerHTML = workspaces.map(ws => {
+    workspacesList.innerHTML = [...workspaces].reverse().map(ws => {
         const isSel = ws.id === currentWorkspaceId;
         const activeClass = isSel ? 'bg-gradient-to-r from-[#4cd7f6]/10 to-transparent text-[#4cd7f6] border-l-2 border-[#4cd7f6]' : 'text-[#958ea0] hover:bg-[#2a2a2a] hover:text-white border-l-2 border-transparent';
-        return `<div class="flex justify-between items-center group px-4 py-3 cursor-pointer transition-all ${activeClass}" onclick="selectWorkspace('${ws.id}', '${ws.name}')">
+        const safeWsName = ws.name.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        
+        return `<div class="flex justify-between items-center group px-4 py-3 cursor-pointer transition-all ${activeClass}" onclick="selectWorkspace('${ws.id}', '${safeWsName}')">
             <div class="flex items-center gap-4 truncate">
                 <span class="material-symbols-outlined text-xl text-secondary">grid_view</span>
                 <span class="font-label text-sm tracking-wide truncate pr-2">${ws.name}</span>
             </div>
             <div class="flex gap-2">
-                <button class="material-symbols-outlined text-sm opacity-0 group-hover:opacity-100 hover:text-primary transition-opacity" onclick="event.stopPropagation(); renameItem('workspace', '${ws.id}', '${ws.name}')">edit</button>
+                <button class="material-symbols-outlined text-sm opacity-0 group-hover:opacity-100 hover:text-primary transition-opacity" onclick="event.stopPropagation(); renameItem('workspace', '${ws.id}', '${safeWsName}')">edit</button>
                 <button class="material-symbols-outlined text-sm opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity" onclick="event.stopPropagation(); deleteWorkspace('${ws.id}')">delete</button>
             </div>
         </div>`;
@@ -373,13 +491,24 @@ function populateWorkspaceDocSelector() {
         confirmCreateWorkspaceBtn.disabled = true; return;
     }
     confirmCreateWorkspaceBtn.disabled = false;
-    workspaceDocsList.innerHTML = documents.map(doc => `
-        <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-surface-container rounded cursor-pointer group text-outline hover:text-white transition-colors">
-            <input type="checkbox" value="${doc.id}" class="rounded border-outline-variant/30 text-primary focus:ring-primary bg-background">
-            <span class="material-symbols-outlined text-sm ${doc.type === 'youtube' ? 'text-red-400' : doc.type === 'audio' ? 'text-tertiary' : 'text-primary'}">${doc.type === 'youtube' ? 'smart_display' : doc.type === 'audio' ? 'mic' : 'description'}</span>
-            <span class="text-sm truncate flex-1">${doc.name}</span>
-        </label>
-    `).join('');
+    workspaceDocsList.innerHTML = documents
+        .filter(doc => !doc.parent_workspace_id) // Filter out workspace-specific sources from the selector
+        .map(doc => {
+        let icon = 'description';
+        let color = 'text-primary';
+        if (doc.type === 'youtube') { icon = 'smart_display'; color = 'text-red-400'; }
+        else if (doc.type === 'audio') { icon = 'mic'; color = 'text-purple-400'; }
+        else if (doc.type === 'image') { icon = 'image'; color = 'text-indigo-400'; }
+        else if (doc.type === 'note') { icon = 'edit_note'; color = 'text-green-400'; }
+
+        return `
+            <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-surface-container rounded cursor-pointer group text-outline hover:text-white transition-colors">
+                <input type="checkbox" value="${doc.id}" class="rounded border-outline-variant/30 text-primary focus:ring-primary bg-background">
+                <span class="material-symbols-outlined text-sm ${color}">${icon}</span>
+                <span class="text-sm truncate flex-1">${doc.name}</span>
+            </label>
+        `;
+    }).join('');
 }
 
 confirmCreateWorkspaceBtn.addEventListener('click', async () => {
@@ -408,18 +537,24 @@ confirmCreateWorkspaceBtn.addEventListener('click', async () => {
 window.deleteDocument = async (id) => {
     if (!confirm('Delete this document?')) return;
     try {
-        await fetch(`${API_BASE_URL}/document/${id}`, { method: 'DELETE' });
-        if (currentDocumentId === id) resetChat();
-        loadDocuments();
-    } catch (e) { }
+        const res = await fetch(`${API_BASE_URL}/document/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+            if (currentDocumentId === id) resetChat();
+            await loadDocuments();
+            await loadWorkspaces();
+            if (currentWorkspaceId) renderWorkspaceSources(currentWorkspaceId);
+        }
+    } catch (e) { console.error("Delete failed", e); }
 }
 window.deleteWorkspace = async (id) => {
     if (!confirm('Delete this workspace?')) return;
     try {
-        await fetch(`${API_BASE_URL}/workspace/${id}`, { method: 'DELETE' });
-        if (currentWorkspaceId === id) resetChat();
-        loadWorkspaces();
-    } catch (e) { }
+        const res = await fetch(`${API_BASE_URL}/workspace/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+            if (currentWorkspaceId === id) resetChat();
+            await loadWorkspaces();
+        }
+    } catch (e) { console.error("Workspace delete failed", e); }
 }
 
 window.renameItem = async (type, id, oldName) => {
@@ -449,8 +584,8 @@ window.renameItem = async (type, id, oldName) => {
 }
 
 function resetChat() {
-    currentDocumentId = null; currentWorkspaceId = null;
     chatFooter.classList.add('hidden');
+    sourcesHub.classList.add('hidden');
     currentChatTitle.textContent = "Select Document";
     currentChatType.textContent = "";
     chatMessages.innerHTML = `
@@ -476,6 +611,42 @@ window.selectWorkspace = (id, name) => {
     currentChatTitle.textContent = name;
     currentChatType.innerHTML = `<span class="text-secondary flex items-center gap-1"><span class="material-symbols-outlined text-sm">grid_view</span> Workspace</span>`;
     initChatView(id);
+    renderWorkspaceSources(id);
+}
+
+function renderWorkspaceSources(workspaceId) {
+    const ws = workspaces.find(w => w.id === workspaceId);
+    if (!ws) return;
+    
+    const hub = document.getElementById('sourcesHub');
+    const list = document.getElementById('workspaceSourcesList');
+    
+    // Fallback for older workspaces without sources array
+    if (!ws.sources || ws.sources.length === 0) {
+        if (!ws.document_ids || ws.document_ids.length === 0) {
+            hub.classList.add('hidden');
+            return;
+        }
+    }
+    
+    hub.classList.remove('hidden');
+    
+    const sourcesToRender = ws.sources && ws.sources.length > 0 
+        ? ws.sources 
+        : ws.document_ids.map(id => documents.find(d => d.id === id)).filter(Boolean);
+    
+    list.innerHTML = sourcesToRender.map(src => {
+        let icon = 'description';
+        if (src.type === 'youtube') icon = 'smart_display';
+        else if (src.type === 'audio') icon = 'mic';
+        else if (src.type === 'image') icon = 'image';
+        else if (src.type === 'note') icon = 'edit_note';
+        
+        return `<div class="flex items-center gap-2 px-3 py-1.5 bg-surface border border-outline-variant/20 rounded-lg text-xs text-on-surface">
+            <span class="material-symbols-outlined text-sm">${icon}</span>
+            <span class="truncate max-w-[120px]">${src.name}</span>
+        </div>`;
+    }).join('');
 }
 
 function initChatView(id) {
