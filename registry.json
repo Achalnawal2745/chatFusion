@@ -23,7 +23,7 @@
             "video_id": "9kuynHcM3UA",
             "collection_name": "video_9kuynHcM3UA",
             "chunks_count": 236,
-            "parent_workspace_id": null,
+            "parent_workspace_id": "ws_1220e0ed",
             "created_at": "2026-04-17T17:11:02.212859"
         },
         "audio_eb74532c": {

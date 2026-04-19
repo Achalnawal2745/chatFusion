@@ -662,8 +662,27 @@ function initChatView(id) {
     } else {
         chatMessages.innerHTML = `
             <div class="flex items-center justify-center h-48 text-outline/50 flex-col gap-4 animate-in fade-in zoom-in">
-                <div class="w-16 h-16 rounded-full bg-surface-container-high border border-outline-variant/30 flex items-center justify-center shadow-lg">
-                    <span class="material-symbols-outlined text-3xl text-primary">auto_awesome</span>
+                <div class="w-16 h-16 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 border border-outline-variant/30 flex items-center justify-center shadow-[0_0_20px_rgba(76,215,246,0.15)] animate-[pulse_3s_ease-in-out_infinite]">
+                    <svg width="32" height="32" viewBox="0 0 100 100" class="drop-shadow-[0_0_8px_rgba(85,22,190,0.4)]">
+                        <defs>
+                            <filter id="cyanGlow" x="-50%" y="-50%" width="200%" height="200%">
+                                <feGaussianBlur stdDeviation="3" result="blur" />
+                                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                            </filter>
+                        </defs>
+                        <line x1="50" y1="50" x2="50" y2="16" stroke="#d0bcff" stroke-width="8" />
+                        <line x1="50" y1="50" x2="82" y2="38" stroke="#d0bcff" stroke-width="8" />
+                        <line x1="50" y1="50" x2="70" y2="75" stroke="#d0bcff" stroke-width="8" />
+                        <line x1="50" y1="50" x2="30" y2="75" stroke="#d0bcff" stroke-width="8" />
+                        <line x1="50" y1="50" x2="18" y2="38" stroke="#d0bcff" stroke-width="8" />
+                        <circle cx="50" cy="16" r="12" fill="#d0bcff" />
+                        <circle cx="82" cy="38" r="12" fill="#d0bcff" />
+                        <circle cx="70" cy="75" r="12" fill="#d0bcff" />
+                        <circle cx="30" cy="75" r="12" fill="#d0bcff" />
+                        <circle cx="18" cy="38" r="12" fill="#d0bcff" />
+                        <circle cx="50" cy="50" r="18" fill="#d0bcff" />
+                        <circle cx="63" cy="65" r="12" fill="#ffffff" opacity="0.85" filter="url(#cyanGlow)" />
+                    </svg>
                 </div>
                 <p>Hello! Ask me questions about this context.</p>
             </div>
@@ -748,12 +767,25 @@ function renderMessage(text, sender, sources = null) {
             <div class="absolute -left-4 top-0 bottom-0 w-0.5 bg-secondary opacity-0 group-hover:opacity-100 transition-all duration-500 shadow-[0_0_15px_#4cd7f6]"></div>
             <div class="max-w-[95%] md:max-w-[85%] bg-surface-container/40 glass-panel border border-secondary/10 rounded-3xl rounded-tl-none p-6 md:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
                 <div class="flex items-center gap-3 mb-4">
-                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-[0_0_15px_rgba(76,215,246,0.3)] shrink-0">
-                        <span class="material-symbols-outlined text-background font-bold text-lg">bolt</span>
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center shadow-[0_0_15px_rgba(76,215,246,0.2)] shrink-0 border border-secondary/20 animate-[pulse_4s_ease-in-out_infinite]">
+                        <svg width="22" height="22" viewBox="0 0 100 100" class="drop-shadow-[0_0_5px_rgba(76,215,246,0.6)]">
+                            <line x1="50" y1="50" x2="50" y2="16" stroke="#4cd7f6" stroke-width="8" />
+                            <line x1="50" y1="50" x2="82" y2="38" stroke="#4cd7f6" stroke-width="8" />
+                            <line x1="50" y1="50" x2="70" y2="75" stroke="#4cd7f6" stroke-width="8" />
+                            <line x1="50" y1="50" x2="30" y2="75" stroke="#4cd7f6" stroke-width="8" />
+                            <line x1="50" y1="50" x2="18" y2="38" stroke="#4cd7f6" stroke-width="8" />
+                            <circle cx="50" cy="16" r="12" fill="#4cd7f6" />
+                            <circle cx="82" cy="38" r="12" fill="#4cd7f6" />
+                            <circle cx="70" cy="75" r="12" fill="#4cd7f6" />
+                            <circle cx="30" cy="75" r="12" fill="#4cd7f6" />
+                            <circle cx="18" cy="38" r="12" fill="#4cd7f6" />
+                            <circle cx="50" cy="50" r="18" fill="#4cd7f6" />
+                            <circle cx="63" cy="65" r="12" fill="#ffffff" opacity="0.9" />
+                        </svg>
                     </div>
                     <div>
-                        <h3 class="font-headline font-bold text-[#d0bcff] text-sm md:text-base">Synthesizing Intelligence</h3>
-                        <span class="text-[9px] md:text-[10px] uppercase tracking-widest text-secondary/60">ChatFusion Core</span>
+                        <h3 class="font-headline font-bold text-[#d0bcff] text-sm md:text-base">ChatFusion</h3>
+                        <span class="text-[9px] md:text-[10px] uppercase tracking-widest text-secondary/60">Knowledge Synthesizer</span>
                     </div>
                 </div>
                 <div class="text-on-surface-variant font-body leading-relaxed text-sm md:text-base prose-sm"><div class="markdown-body">${parseMarkdown(text)}</div></div>
