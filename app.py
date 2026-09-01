@@ -1,4 +1,5 @@
 import os
+import threading
 
 # Suppress TensorFlow warnings and info messages
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -12,16 +13,13 @@ from google import genai
 from google.genai import types
 import chromadb
 from chromadb.config import Settings
-import os
 from dotenv import load_dotenv
 import re
 from urllib.parse import urlparse, parse_qs
-from sentence_transformers import SentenceTransformer
 import PyPDF2
 from werkzeug.utils import secure_filename
 import uuid
 from datetime import datetime
-import easyocr
 import numpy as np
 import cv2
 
@@ -34,26 +32,54 @@ CORS(app)
 # Configure Gemini API (only for chat, not embeddings)
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY not found in environment variables. Please create a .env file with your API key.")
+    print("⚠️ WARNING: GEMINI_API_KEY not found in environment variables. Chat endpoints will require an API key.")
+    client = None
+else:
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
-client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Initialize Sentence Transformer for local embeddings
-print("Loading Sentence Transformer model...")
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-print("Sentence Transformer loaded!")
+# Lazy Model Proxy to prevent slow synchronous startup, Gunicorn timeouts, and high idle memory
+class LazyModelProxy:
+    """Delays model loading and downloading until the first time it is actually needed."""
+    def __init__(self, loader, name="Model"):
+        self._loader = loader
+        self._name = name
+        self._instance = None
+        self._lock = threading.Lock()
 
-# Initialize faster-whisper for local audio transcription (free, no API needed)
-print("Loading Whisper model (base)... this may take a moment on first run...")
-from faster_whisper import WhisperModel
-# 'base' = ~140MB download, good speed/accuracy. Upgrade to 'small' or 'medium' for better accuracy.
-whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
-print("Whisper model loaded!")
+    def _get_instance(self):
+        if self._instance is None:
+            with self._lock:
+                if self._instance is None:
+                    print(f"Loading {self._name}...")
+                    self._instance = self._loader()
+                    print(f"✅ {self._name} loaded successfully!")
+        return self._instance
 
-# Initialize EasyOCR for local image text extraction
-print("Loading EasyOCR reader (en)...")
-ocr_reader = easyocr.Reader(['en'], gpu=False) # Set gpu=True if CUDA is available
-print("EasyOCR reader loaded!")
+    def __getattr__(self, name):
+        return getattr(self._get_instance(), name)
+
+
+def _load_sentence_transformer():
+    from sentence_transformers import SentenceTransformer
+    return SentenceTransformer('all-MiniLM-L6-v2')
+
+
+def _load_whisper_model():
+    from faster_whisper import WhisperModel
+    # 'base' = ~140MB download, good speed/accuracy
+    return WhisperModel("base", device="cpu", compute_type="int8")
+
+
+def _load_ocr_reader():
+    import easyocr
+    return easyocr.Reader(['en'], gpu=False)
+
+
+# Initialize lazy proxies
+embedding_model = LazyModelProxy(_load_sentence_transformer, "Sentence Transformer (all-MiniLM-L6-v2)")
+whisper_model = LazyModelProxy(_load_whisper_model, "faster-whisper (base)")
+ocr_reader = LazyModelProxy(_load_ocr_reader, "EasyOCR (en)")
 
 # Initialize ChromaDB with persistent storage
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
@@ -359,7 +385,15 @@ def process_video():
         
         # Use local Sentence Transformer for embeddings (MUCH faster!)
         print(f"Generating embeddings for {len(texts)} chunks...")
-        embeddings = embedding_model.encode(texts, show_progress_bar=True).tolist()
+        
+        # Process in batches to prevent MemoryError or MKL forrtl crashes on huge videos
+        batch_size = 32
+        embeddings = []
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+            batch_emb = embedding_model.encode(batch, show_progress_bar=False).tolist()
+            embeddings.extend(batch_emb)
+            
         print("Embeddings generated successfully!")
         
         collection.add(
@@ -836,6 +870,9 @@ RESPONSE GUIDELINES:
 
 Provide your response below:"""
         
+        if client is None:
+            return jsonify({'error': 'GEMINI_API_KEY is not set on the server. Please add it to your Hugging Face Space Secrets.'}), 500
+            
         response = client.models.generate_content(
             model='gemini-2.5-flash-lite',
             contents=prompt
@@ -1028,6 +1065,9 @@ RESPONSE GUIDELINES:
 8. **No Disclaimers**: Don't say "the document doesn't cover X" — just give the best, richest answer you can with what's available, supplemented by your own knowledge.
 
 Provide your response below:"""
+        
+        if client is None:
+            return jsonify({'error': 'GEMINI_API_KEY is not set on the server. Please add it to your Hugging Face Space Secrets.'}), 500
 
         response = client.models.generate_content(
             model='gemini-2.5-flash-lite',

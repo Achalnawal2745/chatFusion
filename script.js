@@ -2,6 +2,39 @@
 // Smart fallback: if opened via file:// it uses local server, otherwise it uses relative path for Hugging Face
 const API_BASE_URL = window.location.protocol === 'file:' ? 'http://127.0.0.1:5000/api' : '/api';
 
+// Safe fetch wrapper that handles non-JSON / HTML error pages (e.g. 502/504 Bad Gateway / Hugging Face proxy errors) gracefully
+async function safeFetchJson(url, options = {}, defaultErrMsg = 'Request failed') {
+    let response;
+    try {
+        response = await fetch(url, options);
+    } catch (networkErr) {
+        throw new Error('Network error: Unable to reach server. Please check your connection.');
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+        let data;
+        try {
+            data = await response.json();
+        } catch (e) {
+            throw new Error('Invalid JSON received from server');
+        }
+        if (!response.ok) {
+            throw new Error(data.error || defaultErrMsg);
+        }
+        return data;
+    } else {
+        const text = await response.text();
+        if (!response.ok) {
+            if (response.status === 502 || response.status === 504 || response.status === 503) {
+                throw new Error(`Server temporarily unavailable (${response.status}). The server may still be booting or timed out. Please retry in a moment.`);
+            }
+            throw new Error(`Server error (${response.status}): ${text.slice(0, 100)}`);
+        }
+        throw new Error('Server returned unexpected non-JSON response.');
+    }
+}
+
 // State
 let currentDocumentId = null;
 let currentWorkspaceId = null;
@@ -235,15 +268,17 @@ processVideoBtn.addEventListener('click', async () => {
     try {
         const payload = { url };
         if (_directUploadTargetWsId) payload.workspace_id = _directUploadTargetWsId;
-        const response = await fetch(`${API_BASE_URL}/process-video`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Failed to process video');
+        const data = await safeFetchJson(`${API_BASE_URL}/process-video`, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify(payload) 
+        }, 'Failed to process video');
 
         showStatus(videoStatus, `✓ Processed! ${data.chunks_created} chunks.`, false);
         if (_directUploadTargetWsId) {
             showStatus(videoStatus, `Appending to Workspace...`, false);
             try {
-                await fetch(`${API_BASE_URL}/workspace/${_directUploadTargetWsId}/add-document`, {
+                await safeFetchJson(`${API_BASE_URL}/workspace/${_directUploadTargetWsId}/add-document`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ document_id: data.document_id })
                 });
                 const wId = _directUploadTargetWsId; _directUploadTargetWsId = null;
@@ -273,15 +308,13 @@ pdfFile.addEventListener('change', async () => {
     if (_directUploadTargetWsId) formData.append('workspace_id', _directUploadTargetWsId);
 
     try {
-        const response = await fetch(`${API_BASE_URL}/process-pdf`, { method: 'POST', body: formData });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Failed to process PDF');
+        const data = await safeFetchJson(`${API_BASE_URL}/process-pdf`, { method: 'POST', body: formData }, 'Failed to process PDF');
 
         showStatus(pdfStatus, `✓ Success!`, false);
         if (_directUploadTargetWsId) {
             showStatus(pdfStatus, `Appending to Workspace...`, false);
             try {
-                await fetch(`${API_BASE_URL}/workspace/${_directUploadTargetWsId}/add-document`, {
+                await safeFetchJson(`${API_BASE_URL}/workspace/${_directUploadTargetWsId}/add-document`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ document_id: data.document_id })
                 });
                 const wId = _directUploadTargetWsId; _directUploadTargetWsId = null;
@@ -313,15 +346,13 @@ audioFile.addEventListener('change', async () => {
     if (_directUploadTargetWsId) formData.append('workspace_id', _directUploadTargetWsId);
 
     try {
-        const response = await fetch(`${API_BASE_URL}/process-audio`, { method: 'POST', body: formData });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Failed to process audio');
+        const data = await safeFetchJson(`${API_BASE_URL}/process-audio`, { method: 'POST', body: formData }, 'Failed to process audio');
 
         showStatus(audioStatus, `✓ Transcribed! ${data.chunks_created} chunks created.`, false);
         if (_directUploadTargetWsId) {
             showStatus(audioStatus, `Appending to Workspace...`, false);
             try {
-                await fetch(`${API_BASE_URL}/workspace/${_directUploadTargetWsId}/add-document`, {
+                await safeFetchJson(`${API_BASE_URL}/workspace/${_directUploadTargetWsId}/add-document`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ document_id: data.document_id })
                 });
                 const wId = _directUploadTargetWsId; _directUploadTargetWsId = null;
@@ -351,14 +382,12 @@ imageFile.addEventListener('change', async () => {
     formData.append('file', file);
     if (_directUploadTargetWsId) formData.append('workspace_id', _directUploadTargetWsId);
     try {
-        const response = await fetch(`${API_BASE_URL}/process-image`, { method: 'POST', body: formData });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Failed to extract text');
+        const data = await safeFetchJson(`${API_BASE_URL}/process-image`, { method: 'POST', body: formData }, 'Failed to extract text');
 
         showStatus(imageStatus, `✓ OCR Success!`, false);
         if (_directUploadTargetWsId) {
             const wId = _directUploadTargetWsId; _directUploadTargetWsId = null;
-            await fetch(`${API_BASE_URL}/workspace/${wId}/add-document`, {
+            await safeFetchJson(`${API_BASE_URL}/workspace/${wId}/add-document`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ document_id: data.document_id })
             });
             setTimeout(() => { closeAddDoc(); loadDocuments(); loadWorkspaces(); window.selectWorkspace(wId, currentChatTitle.textContent); }, 1500);
@@ -820,16 +849,13 @@ async function sendChat() {
             payload.document_id = currentDocumentId;
         }
 
-        const response = await fetch(endpoint, {
+        const data = await safeFetchJson(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
-        });
+        }, 'Failed to get answer from AI');
 
-        const data = await response.json();
         typingIndicator.classList.add('hidden');
-        if (!response.ok) throw new Error(data.error);
-
         renderMessage(data.answer, 'ai', data.sources_used);
         saveHistory(data.answer, 'ai', data.sources_used);
 
