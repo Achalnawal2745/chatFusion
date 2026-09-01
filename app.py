@@ -337,7 +337,7 @@ def process_video():
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
             class TimeoutHTTPAdapter(HTTPAdapter):
-                def __init__(self, *args, timeout=8, **kwargs):
+                def __init__(self, *args, timeout=(15, 35), **kwargs):
                     self.timeout = timeout
                     super().__init__(*args, **kwargs)
 
@@ -369,8 +369,9 @@ def process_video():
             def _build_api(use_proxy=False):
                 session = requests.Session()
                 session.verify = False
-                session.mount("http://", TimeoutHTTPAdapter(timeout=8))
-                session.mount("https://", TimeoutHTTPAdapter(timeout=8))
+                timeout_val = (15, 35) if use_proxy else (10, 15)
+                session.mount("http://", TimeoutHTTPAdapter(timeout=timeout_val))
+                session.mount("https://", TimeoutHTTPAdapter(timeout=timeout_val))
                 p_cfg = GenericProxyConfig(http_url=proxy_url, https_url=proxy_url) if (use_proxy and proxy_url) else None
                 return YouTubeTranscriptApi(proxy_config=p_cfg, http_client=session)
 
@@ -386,18 +387,23 @@ def process_video():
                         return api_client.fetch(video_id, languages=[avail[0].language_code])
                     raise NoTranscriptFound("No transcripts available")
 
-            # Direct connection first (instant, free, reliable)
-            print("ℹ️ [process-video] Connecting directly to YouTube...", flush=True)
-            direct_api = _build_api(use_proxy=False)
-            try:
-                transcript_data = _fetch_transcript_data(direct_api)
-            except Exception as direct_err:
-                if proxy_url and not isinstance(direct_err, (TranscriptsDisabled, NoTranscriptFound)):
-                    print(f"⚠️ [process-video] Direct fetch failed ({direct_err}). Retrying through proxy...", flush=True)
-                    proxy_api = _build_api(use_proxy=True)
+            # If PROXY_URL is configured, use it first (since cloud datacenter IPs are blocked by YouTube)
+            if proxy_url:
+                print("ℹ️ [process-video] Fetching transcript via configured proxy...", flush=True)
+                proxy_api = _build_api(use_proxy=True)
+                try:
                     transcript_data = _fetch_transcript_data(proxy_api)
-                else:
-                    raise direct_err
+                except Exception as proxy_err:
+                    if not isinstance(proxy_err, (TranscriptsDisabled, NoTranscriptFound)):
+                        print(f"⚠️ [process-video] Proxy fetch failed ({proxy_err}). Falling back to direct connection...", flush=True)
+                        direct_api = _build_api(use_proxy=False)
+                        transcript_data = _fetch_transcript_data(direct_api)
+                    else:
+                        raise proxy_err
+            else:
+                print("ℹ️ [process-video] Connecting directly to YouTube (no proxy configured)...", flush=True)
+                direct_api = _build_api(use_proxy=False)
+                transcript_data = _fetch_transcript_data(direct_api)
 
             # Convert snippets
             try:
