@@ -300,6 +300,74 @@ def chunk_text(text, chunk_size=1000, overlap=200):
 
 
 
+def extract_transcript_via_ytdlp(video_id):
+    """Fallback transcript extraction using yt-dlp to bypass datacenter IP restrictions."""
+    try:
+        import yt_dlp
+        import urllib.request
+        import json
+        import re
+
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        ydl_opts = {
+            'skip_download': True,
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': False,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            all_subs = {}
+            all_subs.update(info.get('automatic_captions') or {})
+            all_subs.update(info.get('subtitles') or {})
+            if not all_subs:
+                return None
+
+            track_list = all_subs.get('en') or all_subs.get('hi') or next(iter(all_subs.values()), [])
+            
+            # 1. Try json3 format
+            json3_track = next((t for t in track_list if t.get('ext') == 'json3'), None)
+            if json3_track:
+                req = urllib.request.Request(json3_track['url'], headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=12) as resp:
+                    data = json.loads(resp.read().decode('utf-8'))
+                    snippets = []
+                    for event in data.get('events', []):
+                        if 'segs' in event:
+                            text = ''.join(s.get('utf8', '') for s in event['segs']).strip()
+                            if text:
+                                snippets.append({'text': text, 'start': float(event.get('tStartMs', 0)) / 1000.0})
+                    if snippets:
+                        return snippets
+
+            # 2. Try vtt format
+            vtt_track = next((t for t in track_list if t.get('ext') == 'vtt'), None)
+            if vtt_track:
+                req = urllib.request.Request(vtt_track['url'], headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=12) as resp:
+                    vtt_text = resp.read().decode('utf-8', errors='ignore')
+                    snippets = []
+                    curr_time = 0.0
+                    for line in vtt_text.splitlines():
+                        m = re.match(r'(\d{2}):(\d{2}):(\d{2})\.(\d{3}) -->', line) or re.match(r'(\d{2}):(\d{2})\.(\d{3}) -->', line)
+                        if m:
+                            nums = [float(x) for x in m.groups()]
+                            if len(nums) == 4:
+                                curr_time = nums[0]*3600 + nums[1]*60 + nums[2] + nums[3]/1000.0
+                            else:
+                                curr_time = nums[0]*60 + nums[1] + nums[2]/1000.0
+                        elif line.strip() and not line.startswith(('WEBVTT', 'Kind:', 'Language:', 'NOTE')) and not line.isdigit():
+                            clean = re.sub(r'<[^>]+>', '', line).strip()
+                            if clean:
+                                snippets.append({'text': clean, 'start': curr_time})
+                    if snippets:
+                        return snippets
+
+    except Exception as e:
+        print(f"⚠️ [yt-dlp-fallback] Error during yt-dlp subtitle extraction: {e}", flush=True)
+    return None
+
+
 @app.route('/api/process-video', methods=['POST'])
 def process_video():
     """Process YouTube video and create embeddings"""
@@ -327,6 +395,7 @@ def process_video():
         print(f"🎬 [process-video] Extracted video ID: {video_id}", flush=True)
         
         # Get transcript
+        transcript = None
         try:
             print(f"🎬 [process-video] Fetching transcript from YouTube...", flush=True)
             from youtube_transcript_api.proxies import GenericProxyConfig
@@ -425,14 +494,18 @@ def process_video():
         except NoTranscriptFound:
             print(f"❌ [process-video] No transcript found for video {video_id}", flush=True)
             return jsonify({'error': 'No transcript found for this video. Please try a video with closed captions/subtitles.'}), 400
-        except Exception as e:
-            err_str = str(e)
-            print(f"❌ [process-video] YouTube transcript API error: {err_str}", flush=True)
-            import traceback
-            traceback.print_exc()
-            if 'blocking requests from your IP' in err_str or 'IpBlocked' in type(e).__name__:
-                return jsonify({'error': 'YouTube is temporarily rate-limiting cloud host IPs. Please try another video or configure PROXY_URL.'}), 400
-            return jsonify({'error': f'Error fetching transcript: {err_str}'}), 400
+        except Exception as primary_err:
+            err_str = str(primary_err)
+            print(f"⚠️ [process-video] Primary transcript API error: {err_str}", flush=True)
+            print("🔄 [process-video] Attempting fallback extraction via yt-dlp...", flush=True)
+            try:
+                transcript = extract_transcript_via_ytdlp(video_id)
+                if not transcript:
+                    raise Exception("No transcript tracks found via yt-dlp")
+                print(f"✅ [process-video] yt-dlp extracted {len(transcript)} transcript snippets!", flush=True)
+            except Exception as ytdlp_err:
+                print(f"❌ [process-video] All transcript extraction methods failed: {ytdlp_err}", flush=True)
+                return jsonify({'error': f'Could not extract transcript: {ytdlp_err}. Try another video or ensure captions are enabled.'}), 400
         
         # Chunk the transcript
         chunks = chunk_transcript(transcript)
