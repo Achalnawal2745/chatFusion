@@ -1,5 +1,10 @@
 import os
+import sys
 import threading
+
+# Force unbuffered/line-buffered stdout so logs show in real time in Hugging Face / Gunicorn
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(line_buffering=True)
 
 # Suppress TensorFlow warnings and info messages
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -80,6 +85,19 @@ def _load_ocr_reader():
 embedding_model = LazyModelProxy(_load_sentence_transformer, "Sentence Transformer (all-MiniLM-L6-v2)")
 whisper_model = LazyModelProxy(_load_whisper_model, "faster-whisper (base)")
 ocr_reader = LazyModelProxy(_load_ocr_reader, "EasyOCR (en)")
+
+def _warmup_embedding_model():
+    """Warm up sentence-transformer in background so the first user request is instant."""
+    import time
+    time.sleep(2)
+    try:
+        print("🔥 [warmup] Pre-warming embedding model in background...", flush=True)
+        embedding_model.encode(["warmup query"])
+        print("✅ [warmup] Embedding model is ready in RAM!", flush=True)
+    except Exception as w_err:
+        print(f"⚠️ [warmup] Background warmup note: {w_err}", flush=True)
+
+threading.Thread(target=_warmup_embedding_model, daemon=True).start()
 
 # Initialize ChromaDB with persistent storage
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
@@ -286,85 +304,93 @@ def chunk_text(text, chunk_size=1000, overlap=200):
 def process_video():
     """Process YouTube video and create embeddings"""
     try:
-        data = request.json
-        video_url = data.get('url')
+        data = request.json or {}
+        video_url = data.get('url', '').strip()
         workspace_id = data.get('workspace_id')
         
+        print(f"\n🎬 [process-video] Incoming request: url='{video_url}', workspace='{workspace_id}'", flush=True)
+        
         if workspace_id and workspace_id not in workspaces:
+            print(f"⚠️ [process-video] Target workspace not found: {workspace_id}", flush=True)
             return jsonify({'error': 'Target workspace not found'}), 404
             
         if not video_url:
+            print("⚠️ [process-video] No URL provided", flush=True)
             return jsonify({'error': 'No URL provided'}), 400
         
         # Extract video ID
         video_id = extract_video_id(video_url)
         if not video_id:
+            print(f"⚠️ [process-video] Could not extract video ID from: {video_url}", flush=True)
             return jsonify({'error': 'Invalid YouTube URL'}), 400
+            
+        print(f"🎬 [process-video] Extracted video ID: {video_id}", flush=True)
         
         # Get transcript
         try:
+            print(f"🎬 [process-video] Fetching transcript from YouTube...", flush=True)
             from youtube_transcript_api.proxies import GenericProxyConfig
             import requests
             import urllib3
             
-            # Proxies like ScraperAPI intercept requests and use custom SSL certificates
-            # We disable SSL warnings so the console doesn't get flooded.
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             
             proxy_url = os.getenv('PROXY_URL')
-            
-            # Configure custom session to disable SSL verification when using a proxy
-            client = requests.Session()
+            client_session = requests.Session()
             if proxy_url:
-                client.verify = False 
+                print(f"ℹ️ [process-video] Using proxy: {proxy_url[:20]}...", flush=True)
+                client_session.verify = False 
                 
-            # Pass the proxy to the API initialization if it exists
             proxy_config = GenericProxyConfig(http_url=proxy_url, https_url=proxy_url) if proxy_url else None
-            api = YouTubeTranscriptApi(proxy_config=proxy_config, http_client=client)
+            api = YouTubeTranscriptApi(proxy_config=proxy_config, http_client=client_session)
             
-            # Try to get transcript in multiple languages
-            # Priority: Hindi, English, then any available
+            # Efficient transcript fetch: check 'en' and 'hi' first
             try:
-                # Try Hindi first
-                transcript_data = api.fetch(video_id, languages=['hi'])
-            except:
-                try:
-                    # Try English
-                    transcript_data = api.fetch(video_id, languages=['en'])
-                except:
-                    # Try any available language
-                    transcript_list = api.list(video_id)
-                    # Get the first available transcript
-                    available_transcripts = list(transcript_list)
-                    if available_transcripts:
-                        first_transcript = available_transcripts[0]
-                        transcript_data = api.fetch(video_id, languages=[first_transcript.language_code])
-                    else:
-                        raise NoTranscriptFound("No transcripts available")
+                transcript_data = api.fetch(video_id, languages=['en', 'hi'])
+            except Exception as initial_err:
+                print(f"ℹ️ [process-video] Preferred languages (en, hi) not directly fetched: {initial_err}", flush=True)
+                # Fallback to any transcript track available
+                transcript_list = api.list(video_id)
+                available = list(transcript_list)
+                if available:
+                    chosen_track = available[0]
+                    print(f"ℹ️ [process-video] Using available track: {chosen_track.language_code}", flush=True)
+                    transcript_data = api.fetch(video_id, languages=[chosen_track.language_code])
+                else:
+                    raise NoTranscriptFound("No transcripts available")
             
-            # Convert snippets to the expected format.
-            # Depending on youtube-transcript-api version, it returns a dict list directly, or objects.
+            # Convert snippets
             try:
                 if hasattr(transcript_data[0], 'text'):
                     transcript = [{'text': s.text, 'start': float(s.start)} for s in transcript_data]
                 else:
                     transcript = [{'text': s.get('text', ''), 'start': float(s.get('start', 0.0))} for s in transcript_data]
             except Exception as inner_e:
-                # Fallback to older snippet format if necessary
                 if hasattr(transcript_data, 'snippets'):
                     transcript = [{'text': getattr(s, 'text', ''), 'start': float(getattr(s, 'start', 0.0))} for s in transcript_data.snippets]
                 else:
                     raise inner_e
+                    
+            print(f"✅ [process-video] Successfully extracted {len(transcript)} transcript snippets", flush=True)
                 
         except TranscriptsDisabled:
-            return jsonify({'error': 'Transcripts are disabled for this video'}), 400
+            print(f"❌ [process-video] Transcripts disabled for video {video_id}", flush=True)
+            return jsonify({'error': 'Transcripts are disabled for this video on YouTube'}), 400
         except NoTranscriptFound:
-            return jsonify({'error': 'No transcript found for this video. Please try a video with captions/subtitles.'}), 400
+            print(f"❌ [process-video] No transcript found for video {video_id}", flush=True)
+            return jsonify({'error': 'No transcript found for this video. Please try a video with closed captions/subtitles.'}), 400
         except Exception as e:
-            return jsonify({'error': f'Error fetching transcript: {str(e)}'}), 400
+            err_str = str(e)
+            print(f"❌ [process-video] YouTube transcript API error: {err_str}", flush=True)
+            import traceback
+            traceback.print_exc()
+            if 'blocking requests from your IP' in err_str or 'IpBlocked' in type(e).__name__:
+                return jsonify({'error': 'YouTube is temporarily rate-limiting cloud host IPs. Please try another video or configure PROXY_URL.'}), 400
+            return jsonify({'error': f'Error fetching transcript: {err_str}'}), 400
         
         # Chunk the transcript
         chunks = chunk_transcript(transcript)
+        print(f"📊 [process-video] Chunked transcript into {len(chunks)} chunks", flush=True)
         
         # Create or get collection for this video
         collection_name = f"video_{video_id}"
@@ -383,18 +409,18 @@ def process_video():
         metadatas = [{'start_time': chunk['start_time']} for chunk in chunks]
         ids = [f"chunk_{i}" for i in range(len(chunks))]
         
-        # Use local Sentence Transformer for embeddings (MUCH faster!)
-        print(f"Generating embeddings for {len(texts)} chunks...")
+        print(f"🧠 [process-video] Generating embeddings for {len(texts)} chunks...", flush=True)
         
-        # Process in batches to prevent MemoryError or MKL forrtl crashes on huge videos
+        # Process in batches to prevent memory spike
         batch_size = 32
         embeddings = []
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
             batch_emb = embedding_model.encode(batch, show_progress_bar=False).tolist()
             embeddings.extend(batch_emb)
+            print(f"   Embeddings: processed {min(i + batch_size, len(texts))}/{len(texts)} chunks", flush=True)
             
-        print("Embeddings generated successfully!")
+        print("✅ [process-video] Embeddings generated successfully!", flush=True)
         
         collection.add(
             embeddings=embeddings,
@@ -402,6 +428,7 @@ def process_video():
             metadatas=metadatas,
             ids=ids
         )
+        print(f"💾 [process-video] Stored in ChromaDB under collection '{collection_name}'", flush=True)
         
         # Store in unified document registry
         doc_id = f"youtube_{video_id}"
