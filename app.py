@@ -331,34 +331,77 @@ def process_video():
             print(f"🎬 [process-video] Fetching transcript from YouTube...", flush=True)
             from youtube_transcript_api.proxies import GenericProxyConfig
             import requests
+            from requests.adapters import HTTPAdapter
             import urllib3
             
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-            
-            proxy_url = os.getenv('PROXY_URL')
-            client_session = requests.Session()
-            if proxy_url:
-                print(f"ℹ️ [process-video] Using proxy: {proxy_url[:20]}...", flush=True)
-                client_session.verify = False 
-                
-            proxy_config = GenericProxyConfig(http_url=proxy_url, https_url=proxy_url) if proxy_url else None
-            api = YouTubeTranscriptApi(proxy_config=proxy_config, http_client=client_session)
-            
-            # Efficient transcript fetch: check 'en' and 'hi' first
-            try:
-                transcript_data = api.fetch(video_id, languages=['en', 'hi'])
-            except Exception as initial_err:
-                print(f"ℹ️ [process-video] Preferred languages (en, hi) not directly fetched: {initial_err}", flush=True)
-                # Fallback to any transcript track available
-                transcript_list = api.list(video_id)
-                available = list(transcript_list)
-                if available:
-                    chosen_track = available[0]
-                    print(f"ℹ️ [process-video] Using available track: {chosen_track.language_code}", flush=True)
-                    transcript_data = api.fetch(video_id, languages=[chosen_track.language_code])
-                else:
+
+            class TimeoutHTTPAdapter(HTTPAdapter):
+                def __init__(self, *args, timeout=12, **kwargs):
+                    self.timeout = timeout
+                    super().__init__(*args, **kwargs)
+
+                def send(self, req, **kwargs):
+                    kwargs.setdefault('timeout', self.timeout)
+                    return super().send(req, **kwargs)
+
+            def _clean_proxy_url(raw):
+                if not raw:
+                    return None
+                raw = raw.strip().strip("'\"")
+                if not raw:
+                    return None
+                # Auto-repair ScraperAPI missing host/port
+                if 'scraperapi' in raw.lower() and '@' not in raw:
+                    key = raw.replace('http://', '').replace('https://', '').replace('scraperapi:', '').strip('/')
+                    repaired = f"http://scraperapi:{key}@proxy-server.scraperapi.com:8001"
+                    print("🔧 [proxy] Auto-repaired ScraperAPI URL to http://scraperapi:***@proxy-server.scraperapi.com:8001", flush=True)
+                    return repaired
+                elif '@' not in raw and len(raw) == 32 and not raw.startswith(('http://', 'https://')):
+                    repaired = f"http://scraperapi:{raw}@proxy-server.scraperapi.com:8001"
+                    print("🔧 [proxy] Formatted ScraperAPI key to proxy URL", flush=True)
+                    return repaired
+                return raw
+
+            proxy_url = _clean_proxy_url(os.getenv('PROXY_URL'))
+
+            def _build_api(use_proxy=True):
+                session = requests.Session()
+                session.verify = False
+                session.mount("http://", TimeoutHTTPAdapter(timeout=12))
+                session.mount("https://", TimeoutHTTPAdapter(timeout=12))
+                p_cfg = GenericProxyConfig(http_url=proxy_url, https_url=proxy_url) if (use_proxy and proxy_url) else None
+                return YouTubeTranscriptApi(proxy_config=p_cfg, http_client=session)
+
+            def _fetch_transcript_data(api_client):
+                try:
+                    return api_client.fetch(video_id, languages=['en', 'hi'])
+                except Exception as lang_err:
+                    print(f"ℹ️ [process-video] Checking fallback tracks: {lang_err}", flush=True)
+                    t_list = api_client.list(video_id)
+                    avail = list(t_list)
+                    if avail:
+                        print(f"ℹ️ [process-video] Found track: {avail[0].language_code}", flush=True)
+                        return api_client.fetch(video_id, languages=[avail[0].language_code])
                     raise NoTranscriptFound("No transcripts available")
-            
+
+            api = _build_api(use_proxy=bool(proxy_url))
+            if proxy_url:
+                print("ℹ️ [process-video] Attempting fetch through proxy...", flush=True)
+            else:
+                print("ℹ️ [process-video] Connecting directly to YouTube (no proxy)...", flush=True)
+
+            try:
+                transcript_data = _fetch_transcript_data(api)
+            except Exception as first_attempt_err:
+                # If proxy attempt failed or timed out, retry directly
+                if proxy_url and not isinstance(first_attempt_err, (TranscriptsDisabled, NoTranscriptFound)):
+                    print(f"⚠️ [process-video] Proxy fetch failed ({first_attempt_err}). Retrying direct connection...", flush=True)
+                    direct_api = _build_api(use_proxy=False)
+                    transcript_data = _fetch_transcript_data(direct_api)
+                else:
+                    raise first_attempt_err
+
             # Convert snippets
             try:
                 if hasattr(transcript_data[0], 'text'):
