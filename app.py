@@ -302,6 +302,7 @@ def chunk_text(text, chunk_size=1000, overlap=200):
 
 def extract_transcript_via_ytdlp(video_id):
     """Fallback transcript extraction using yt-dlp to bypass datacenter IP restrictions."""
+    print(f"📥 [yt-dlp] Starting extraction for video ID: {video_id}", flush=True)
     try:
         import yt_dlp
         import urllib.request
@@ -314,22 +315,28 @@ def extract_transcript_via_ytdlp(video_id):
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
+            'socket_timeout': 15,
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            print("📥 [yt-dlp] Fetching video metadata...", flush=True)
             info = ydl.extract_info(url, download=False)
             all_subs = {}
             all_subs.update(info.get('automatic_captions') or {})
             all_subs.update(info.get('subtitles') or {})
             if not all_subs:
+                print("⚠️ [yt-dlp] No subtitle tracks found in metadata", flush=True)
                 return None
 
+            print(f"📥 [yt-dlp] Found {len(all_subs)} subtitle languages", flush=True)
             track_list = all_subs.get('en') or all_subs.get('hi') or next(iter(all_subs.values()), [])
             
             # 1. Try json3 format
             json3_track = next((t for t in track_list if t.get('ext') == 'json3'), None)
             if json3_track:
+                print("📥 [yt-dlp] Downloading json3 caption stream...", flush=True)
                 req = urllib.request.Request(json3_track['url'], headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req, timeout=12) as resp:
+                with urllib.request.urlopen(req, timeout=15) as resp:
                     data = json.loads(resp.read().decode('utf-8'))
                     snippets = []
                     for event in data.get('events', []):
@@ -338,13 +345,15 @@ def extract_transcript_via_ytdlp(video_id):
                             if text:
                                 snippets.append({'text': text, 'start': float(event.get('tStartMs', 0)) / 1000.0})
                     if snippets:
+                        print(f"✅ [yt-dlp] Parsed {len(snippets)} snippets from json3", flush=True)
                         return snippets
 
             # 2. Try vtt format
             vtt_track = next((t for t in track_list if t.get('ext') == 'vtt'), None)
             if vtt_track:
+                print("📥 [yt-dlp] Downloading vtt caption stream...", flush=True)
                 req = urllib.request.Request(vtt_track['url'], headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req, timeout=12) as resp:
+                with urllib.request.urlopen(req, timeout=15) as resp:
                     vtt_text = resp.read().decode('utf-8', errors='ignore')
                     snippets = []
                     curr_time = 0.0
@@ -361,6 +370,7 @@ def extract_transcript_via_ytdlp(video_id):
                             if clean:
                                 snippets.append({'text': clean, 'start': curr_time})
                     if snippets:
+                        print(f"✅ [yt-dlp] Parsed {len(snippets)} snippets from vtt", flush=True)
                         return snippets
 
     except Exception as e:
