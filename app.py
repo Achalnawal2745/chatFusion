@@ -300,6 +300,78 @@ def chunk_text(text, chunk_size=1000, overlap=200):
 
 
 
+def extract_transcript_via_supadata(video_url, api_key=None):
+    """Primary transcript extraction using Supadata.ai API to bypass cloud datacenter IP blocks."""
+    api_key = api_key or os.getenv('SUPADATA_API_KEY') or 'sd_dda5c6feda374288d06015682b01a873'
+    if not api_key:
+        print("⚠️ [supadata] No SUPADATA_API_KEY configured", flush=True)
+        return None
+
+    print(f"🎬 [supadata] Requesting transcript for: {video_url}", flush=True)
+    import requests
+    import time
+    
+    url = f"https://api.supadata.ai/v1/transcript?url={video_url}"
+    headers = {'x-api-key': api_key}
+    
+    try:
+        r = requests.get(url, headers=headers, timeout=35)
+        print(f"🎬 [supadata] Response status: {r.status_code}", flush=True)
+        
+        if r.status_code == 200:
+            data = r.json()
+            raw_chunks = data.get('content') or []
+            if isinstance(raw_chunks, list) and raw_chunks:
+                snippets = [
+                    {
+                        'text': c['text'].strip(),
+                        'start': float(c.get('offset', 0)) / 1000.0
+                    }
+                    for c in raw_chunks
+                    if isinstance(c, dict) and c.get('text', '').strip()
+                ]
+                if snippets:
+                    print(f"✅ [supadata] Successfully extracted {len(snippets)} snippets!", flush=True)
+                    return snippets
+            elif isinstance(raw_chunks, str) and raw_chunks.strip():
+                return [{'text': raw_chunks.strip(), 'start': 0.0}]
+                
+        elif r.status_code == 202:
+            job_id = r.json().get('jobId')
+            print(f"⏳ [supadata] Video queued for async processing (jobId: {job_id}). Polling...", flush=True)
+            for attempt in range(45):
+                time.sleep(2)
+                poll_r = requests.get(f"https://api.supadata.ai/v1/transcript/{job_id}", headers=headers, timeout=15)
+                if poll_r.status_code == 200:
+                    poll_data = poll_r.json()
+                    status = poll_data.get('status')
+                    if status == 'completed':
+                        content = poll_data.get('content') or poll_data.get('result') or []
+                        if isinstance(content, list) and content:
+                            snippets = [
+                                {
+                                    'text': c['text'].strip(),
+                                    'start': float(c.get('offset', 0)) / 1000.0
+                                }
+                                for c in content
+                                if isinstance(c, dict) and c.get('text', '').strip()
+                            ]
+                            if snippets:
+                                print(f"✅ [supadata] Async transcription completed: {len(snippets)} snippets", flush=True)
+                                return snippets
+                        elif isinstance(content, str) and content.strip():
+                            return [{'text': content.strip(), 'start': 0.0}]
+                    elif status == 'failed':
+                        print(f"⚠️ [supadata] Async job failed: {poll_data.get('error')}", flush=True)
+                        break
+        else:
+            print(f"⚠️ [supadata] API returned status {r.status_code}: {r.text[:200]}", flush=True)
+    except Exception as e:
+        print(f"⚠️ [supadata] Request error: {e}", flush=True)
+        
+    return None
+
+
 def extract_transcript_via_ytdlp(video_id):
     """Fallback transcript extraction using yt-dlp to bypass datacenter IP restrictions."""
     print(f"📥 [yt-dlp] Starting extraction for video ID: {video_id}", flush=True)
@@ -406,116 +478,121 @@ def process_video():
         
         # Get transcript
         transcript = None
+
+        # 1. Primary: Try Supadata API (bypasses YouTube datacenter IP blocks)
+        print("🎬 [process-video] Step 1: Attempting extraction via Supadata API...", flush=True)
         try:
-            print(f"🎬 [process-video] Fetching transcript from YouTube...", flush=True)
-            from youtube_transcript_api.proxies import GenericProxyConfig
-            import requests
-            from requests.adapters import HTTPAdapter
-            import urllib3
-            
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            transcript = extract_transcript_via_supadata(video_url)
+            if transcript:
+                print(f"✅ [process-video] Supadata extracted {len(transcript)} transcript snippets!", flush=True)
+        except Exception as supadata_err:
+            print(f"⚠️ [process-video] Supadata extraction note: {supadata_err}", flush=True)
 
-            class TimeoutHTTPAdapter(HTTPAdapter):
-                def __init__(self, *args, timeout=(15, 35), **kwargs):
-                    self.timeout = timeout
-                    super().__init__(*args, **kwargs)
-
-                def send(self, req, **kwargs):
-                    if kwargs.get('timeout') is None:
-                        kwargs['timeout'] = self.timeout
-                    return super().send(req, **kwargs)
-
-            def _clean_proxy_url(raw):
-                if not raw:
-                    return None
-                raw = raw.strip().strip("'\"")
-                if not raw:
-                    return None
-                # Auto-repair ScraperAPI missing host/port
-                if 'scraperapi' in raw.lower() and '@' not in raw:
-                    key = raw.replace('http://', '').replace('https://', '').replace('scraperapi:', '').strip('/')
-                    repaired = f"http://scraperapi:{key}@proxy-server.scraperapi.com:8001"
-                    print("🔧 [proxy] Auto-repaired ScraperAPI URL to http://scraperapi:***@proxy-server.scraperapi.com:8001", flush=True)
-                    return repaired
-                elif '@' not in raw and len(raw) == 32 and not raw.startswith(('http://', 'https://')):
-                    repaired = f"http://scraperapi:{raw}@proxy-server.scraperapi.com:8001"
-                    print("🔧 [proxy] Formatted ScraperAPI key to proxy URL", flush=True)
-                    return repaired
-                return raw
-
-            proxy_url = _clean_proxy_url(os.getenv('PROXY_URL'))
-
-            def _build_api(use_proxy=False):
-                session = requests.Session()
-                session.verify = False
-                timeout_val = (15, 35) if use_proxy else (10, 15)
-                session.mount("http://", TimeoutHTTPAdapter(timeout=timeout_val))
-                session.mount("https://", TimeoutHTTPAdapter(timeout=timeout_val))
-                p_cfg = GenericProxyConfig(http_url=proxy_url, https_url=proxy_url) if (use_proxy and proxy_url) else None
-                return YouTubeTranscriptApi(proxy_config=p_cfg, http_client=session)
-
-            def _fetch_transcript_data(api_client):
-                try:
-                    return api_client.fetch(video_id, languages=['en', 'hi'])
-                except Exception as lang_err:
-                    print(f"ℹ️ [process-video] Checking fallback tracks: {lang_err}", flush=True)
-                    t_list = api_client.list(video_id)
-                    avail = list(t_list)
-                    if avail:
-                        print(f"ℹ️ [process-video] Found track: {avail[0].language_code}", flush=True)
-                        return api_client.fetch(video_id, languages=[avail[0].language_code])
-                    raise NoTranscriptFound("No transcripts available")
-
-            # If PROXY_URL is configured, use it first (since cloud datacenter IPs are blocked by YouTube)
-            if proxy_url:
-                print("ℹ️ [process-video] Fetching transcript via configured proxy...", flush=True)
-                proxy_api = _build_api(use_proxy=True)
-                try:
-                    transcript_data = _fetch_transcript_data(proxy_api)
-                except Exception as proxy_err:
-                    if not isinstance(proxy_err, (TranscriptsDisabled, NoTranscriptFound)):
-                        print(f"⚠️ [process-video] Proxy fetch failed ({proxy_err}). Falling back to direct connection...", flush=True)
-                        direct_api = _build_api(use_proxy=False)
-                        transcript_data = _fetch_transcript_data(direct_api)
-                    else:
-                        raise proxy_err
-            else:
-                print("ℹ️ [process-video] Connecting directly to YouTube (no proxy configured)...", flush=True)
-                direct_api = _build_api(use_proxy=False)
-                transcript_data = _fetch_transcript_data(direct_api)
-
-            # Convert snippets
-            try:
-                if hasattr(transcript_data[0], 'text'):
-                    transcript = [{'text': s.text, 'start': float(s.start)} for s in transcript_data]
-                else:
-                    transcript = [{'text': s.get('text', ''), 'start': float(s.get('start', 0.0))} for s in transcript_data]
-            except Exception as inner_e:
-                if hasattr(transcript_data, 'snippets'):
-                    transcript = [{'text': getattr(s, 'text', ''), 'start': float(getattr(s, 'start', 0.0))} for s in transcript_data.snippets]
-                else:
-                    raise inner_e
-                    
-            print(f"✅ [process-video] Successfully extracted {len(transcript)} transcript snippets", flush=True)
-                
-        except TranscriptsDisabled:
-            print(f"❌ [process-video] Transcripts disabled for video {video_id}", flush=True)
-            return jsonify({'error': 'Transcripts are disabled for this video on YouTube'}), 400
-        except NoTranscriptFound:
-            print(f"❌ [process-video] No transcript found for video {video_id}", flush=True)
-            return jsonify({'error': 'No transcript found for this video. Please try a video with closed captions/subtitles.'}), 400
-        except Exception as primary_err:
-            err_str = str(primary_err)
-            print(f"⚠️ [process-video] Primary transcript API error: {err_str}", flush=True)
-            print("🔄 [process-video] Attempting fallback extraction via yt-dlp...", flush=True)
+        # 2. Fallback: Try yt-dlp if Supadata did not return a transcript
+        if not transcript:
+            print("🔄 [process-video] Step 2: Attempting fallback extraction via yt-dlp...", flush=True)
             try:
                 transcript = extract_transcript_via_ytdlp(video_id)
-                if not transcript:
-                    raise Exception("No transcript tracks found via yt-dlp")
-                print(f"✅ [process-video] yt-dlp extracted {len(transcript)} transcript snippets!", flush=True)
+                if transcript:
+                    print(f"✅ [process-video] yt-dlp extracted {len(transcript)} transcript snippets!", flush=True)
             except Exception as ytdlp_err:
-                print(f"❌ [process-video] All transcript extraction methods failed: {ytdlp_err}", flush=True)
-                return jsonify({'error': f'Could not extract transcript: {ytdlp_err}. Try another video or ensure captions are enabled.'}), 400
+                print(f"⚠️ [process-video] yt-dlp fallback error: {ytdlp_err}", flush=True)
+
+        # 3. Fallback: Try youtube_transcript_api if both above failed
+        if not transcript:
+            print("🔄 [process-video] Step 3: Attempting fallback extraction via youtube_transcript_api...", flush=True)
+            try:
+                from youtube_transcript_api.proxies import GenericProxyConfig
+                import requests
+                from requests.adapters import HTTPAdapter
+                import urllib3
+                
+                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+                class TimeoutHTTPAdapter(HTTPAdapter):
+                    def __init__(self, *args, timeout=(15, 35), **kwargs):
+                        self.timeout = timeout
+                        super().__init__(*args, **kwargs)
+
+                    def send(self, req, **kwargs):
+                        if kwargs.get('timeout') is None:
+                            kwargs['timeout'] = self.timeout
+                        return super().send(req, **kwargs)
+
+                def _clean_proxy_url(raw):
+                    if not raw:
+                        return None
+                    raw = raw.strip().strip("'\"")
+                    if not raw:
+                        return None
+                    if 'scraperapi' in raw.lower() and '@' not in raw:
+                        key = raw.replace('http://', '').replace('https://', '').replace('scraperapi:', '').strip('/')
+                        return f"http://scraperapi:{key}@proxy-server.scraperapi.com:8001"
+                    elif '@' not in raw and len(raw) == 32 and not raw.startswith(('http://', 'https://')):
+                        return f"http://scraperapi:{raw}@proxy-server.scraperapi.com:8001"
+                    return raw
+
+                proxy_url = _clean_proxy_url(os.getenv('PROXY_URL'))
+
+                def _build_api(use_proxy=False):
+                    session = requests.Session()
+                    session.verify = False
+                    timeout_val = (15, 35) if use_proxy else (10, 15)
+                    session.mount("http://", TimeoutHTTPAdapter(timeout=timeout_val))
+                    session.mount("https://", TimeoutHTTPAdapter(timeout=timeout_val))
+                    p_cfg = GenericProxyConfig(http_url=proxy_url, https_url=proxy_url) if (use_proxy and proxy_url) else None
+                    return YouTubeTranscriptApi(proxy_config=p_cfg, http_client=session)
+
+                def _fetch_transcript_data(api_client):
+                    try:
+                        return api_client.fetch(video_id, languages=['en', 'hi'])
+                    except Exception as lang_err:
+                        t_list = api_client.list(video_id)
+                        avail = list(t_list)
+                        if avail:
+                            return api_client.fetch(video_id, languages=[avail[0].language_code])
+                        raise NoTranscriptFound("No transcripts available")
+
+                if proxy_url:
+                    proxy_api = _build_api(use_proxy=True)
+                    try:
+                        transcript_data = _fetch_transcript_data(proxy_api)
+                    except Exception as proxy_err:
+                        if not isinstance(proxy_err, (TranscriptsDisabled, NoTranscriptFound)):
+                            direct_api = _build_api(use_proxy=False)
+                            transcript_data = _fetch_transcript_data(direct_api)
+                        else:
+                            raise proxy_err
+                else:
+                    direct_api = _build_api(use_proxy=False)
+                    transcript_data = _fetch_transcript_data(direct_api)
+
+                try:
+                    if hasattr(transcript_data[0], 'text'):
+                        transcript = [{'text': s.text, 'start': float(s.start)} for s in transcript_data]
+                    else:
+                        transcript = [{'text': s.get('text', ''), 'start': float(s.get('start', 0.0))} for s in transcript_data]
+                except Exception as inner_e:
+                    if hasattr(transcript_data, 'snippets'):
+                        transcript = [{'text': getattr(s, 'text', ''), 'start': float(getattr(s, 'start', 0.0))} for s in transcript_data.snippets]
+                    else:
+                        raise inner_e
+
+                if transcript:
+                    print(f"✅ [process-video] youtube_transcript_api extracted {len(transcript)} transcript snippets!", flush=True)
+
+            except TranscriptsDisabled:
+                print(f"❌ [process-video] Transcripts disabled for video {video_id}", flush=True)
+                return jsonify({'error': 'Transcripts are disabled for this video on YouTube'}), 400
+            except NoTranscriptFound:
+                print(f"❌ [process-video] No transcript found for video {video_id}", flush=True)
+                return jsonify({'error': 'No transcript found for this video. Please try a video with closed captions/subtitles.'}), 400
+            except Exception as yta_err:
+                print(f"⚠️ [process-video] youtube_transcript_api error: {yta_err}", flush=True)
+
+        if not transcript:
+            print(f"❌ [process-video] All transcript extraction methods failed for video {video_id}", flush=True)
+            return jsonify({'error': 'Could not extract transcript for this video. Please ensure closed captions or subtitles are enabled.'}), 400
         
         # Chunk the transcript
         chunks = chunk_transcript(transcript)
