@@ -783,11 +783,17 @@ function renderMessage(text, sender, sources = null) {
                     <span class="font-label text-[10px] font-semibold tracking-wide uppercase text-on-surface">Sources Used</span>
                 </div>
                 <div class="mt-3 flex flex-wrap gap-2">
-                    ${sources.map(s => `
-                    <div class="flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface-container-lowest border border-outline-variant/5 text-[11px] text-outline-variant">
-                        <span class="material-symbols-outlined text-sm ${s.type === 'pdf' ? 'text-primary' : s.type === 'audio' ? 'text-tertiary' : 'text-red-400'}">${s.type === 'pdf' ? 'description' : s.type === 'audio' ? 'mic' : 'movie'}</span>
-                        <span class="truncate max-w-[150px]">${s.name}</span>
-                    </div>`).join('')}
+                    ${sources.map(s => {
+                        const type = (s.type || (s.timestamp !== undefined ? 'youtube' : (s.chunk !== undefined ? 'pdf' : 'document'))).toLowerCase();
+                        const icon = type === 'pdf' ? 'description' : (type === 'audio' ? 'mic' : (type === 'youtube' ? 'movie' : 'article'));
+                        const color = type === 'pdf' ? 'text-primary' : (type === 'audio' ? 'text-tertiary' : (type === 'youtube' ? 'text-red-400' : 'text-secondary'));
+                        const displayName = s.name || s.filename || (s.timestamp !== undefined ? `Timestamp ${Math.floor(s.timestamp)}s` : (s.chunk !== undefined ? `Section ${s.chunk}` : 'Source Content'));
+                        return `
+                        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface-container-lowest border border-outline-variant/10 text-[11px] text-on-surface-variant hover:border-outline-variant/30 transition-all" title="${displayName}">
+                            <span class="material-symbols-outlined text-sm ${color}">${icon}</span>
+                            <span class="truncate max-w-[240px]">${displayName}</span>
+                        </div>`;
+                    }).join('')}
                 </div>
             </div>`;
         }

@@ -1049,28 +1049,30 @@ def chat():
             n_results=5
         )
         
-        if not results['documents'] or not results['documents'][0]:
-            return jsonify({'success': True, 'answer': "No relevant content found in this document.", 'sources_used': []})
+        has_matched_chunks = bool(results.get('documents') and results['documents'][0])
         
         # Build context from retrieved chunks
         context_parts = []
-        for i, doc in enumerate(results['documents'][0]):
-            metadata = results['metadatas'][0][i]
-            # Handle both YouTube (start_time) and PDF (chunk_index) metadata
-            if 'start_time' in metadata:
-                timestamp = int(metadata['start_time'])
-                context_parts.append(f"[{timestamp}s] {doc}")
-            elif 'chunk_index' in metadata:
-                chunk_idx = metadata['chunk_index']
-                context_parts.append(f"[Chunk {chunk_idx}] {doc}")
-            else:
-                context_parts.append(doc)
-        
-        context = "\n\n".join(context_parts)
+        if has_matched_chunks:
+            for i, doc in enumerate(results['documents'][0]):
+                metadata = results['metadatas'][0][i]
+                # Handle both YouTube (start_time) and PDF (chunk_index) metadata
+                if 'start_time' in metadata:
+                    timestamp = int(metadata['start_time'])
+                    context_parts.append(f"[{timestamp}s] {doc}")
+                elif 'chunk_index' in metadata:
+                    chunk_idx = metadata['chunk_index']
+                    context_parts.append(f"[Chunk {chunk_idx}] {doc}")
+                else:
+                    context_parts.append(doc)
+            context = "\n\n".join(context_parts)
+        else:
+            context = "(No direct excerpts from the uploaded material matched this query.)"
         
         # Generate response using Gemini
         # Prepare dynamic prompt text based on document type
         doc_type = doc_info.get('type', 'document')
+        doc_name = doc_info.get('name') or (f"YouTube Video ({doc_info.get('video_id', '')[:8]}...)" if doc_type == 'youtube' else 'Uploaded Document')
         
         if doc_type == 'youtube':
             doc_noun = "YouTube video"
@@ -1085,23 +1087,21 @@ def chat():
             content_noun = "text"
             ref_noun = "chunk numbers"
         
-        prompt = f"""You are ChatFusion, an intelligent assistant that helps users understand and explore content from their uploaded {doc_noun}.
+        prompt = f"""You are ChatFusion, an intelligent AI Knowledge Synthesizer and study copilot. You help users understand, analyze, and expand upon content from their uploaded {doc_noun}.
 
-CONTENT FROM THE {doc_noun.upper()} (with {ref_noun}):
+UPLOADED {doc_noun.upper()} CONTENT (with {ref_noun}):
 {context}
 
 USER'S QUESTION: {question}
 
 RESPONSE GUIDELINES:
-1. **Primary Source**: Always ground your answer in the provided content above. This is the user's uploaded material and should be the foundation of every response.
-2. **Supplement When Helpful**: If the content covers a topic but lacks depth, you may enrich your answer with your own knowledge — add clear examples, simple analogies, or deeper explanations to make things click. Always make it clear what comes from the document vs. your own addition (e.g., "Based on the content... To illustrate further...").
-3. **Clarity First**: Write in clear, easy-to-understand language. Use short paragraphs, bullet points, bold key terms, and markdown formatting. Avoid walls of text.
-4. **Be Thorough**: Don't give one-line answers when the topic deserves more detail. Provide complete, well-structured responses.
-5. **Examples**: When explaining concepts, include practical examples — either from the content or your own — to make the answer concrete and useful.
-6. **Conversational**: If the user sends a greeting ("hi", "hello"), respond naturally and ask what they'd like to explore.
-7. **Honest**: If the content truly doesn't cover the topic at all, say so briefly, then offer what you know about the topic from your own knowledge if relevant.
+1. **Document Grounding First**: If the provided content contains the answer or relevant insights, prioritize and cite it clearly (using timestamps or sections).
+2. **Proactively Supplement with Outside Knowledge**: If the question asks for additional details, explanations, practical examples, formulas, background, code, or topics that are NOT present (or only partially covered) in the uploaded content, ACTIVELY and CONFIDENTLY provide that information from your general AI knowledge.
+3. **Never Refuse or Block**: Never say "I can only answer from the document" or "The document does not mention this, so I cannot help." Instead, answer thoroughly while noting smoothly (e.g., *"While the uploaded material focuses on X, here is how Y works in general..."* or *"Expanding beyond the document with practical context..."*).
+4. **Clarity & Formatting**: Use clean markdown formatting, concise paragraphs, bold key terms, and bullet points. Avoid dense walls of text.
+5. **Conversational**: For casual greetings ("hi", "hello"), respond warmly and ask what they would like to explore or learn.
 
-Provide your response below:"""
+Provide your comprehensive response below:"""
         
         if client is None:
             return jsonify({'error': 'GEMINI_API_KEY is not set on the server. Please add it to your Hugging Face Space Secrets.'}), 500
@@ -1111,13 +1111,33 @@ Provide your response below:"""
             contents=prompt
         )
         
-        # Build sources list (handle both YouTube and PDF metadata)
+        # Build structured sources list with proper name, type, and timestamp metadata
         sources_used = []
-        for meta in results['metadatas'][0]:
-            if 'start_time' in meta:
-                sources_used.append({'timestamp': meta['start_time']})
-            elif 'chunk_index' in meta:
-                sources_used.append({'chunk': meta['chunk_index']})
+        timestamps = []
+        chunks = []
+        if has_matched_chunks:
+            for meta in results['metadatas'][0]:
+                if 'start_time' in meta:
+                    timestamps.append(int(meta['start_time']))
+                elif 'chunk_index' in meta:
+                    chunks.append(meta['chunk_index'])
+        
+        detail = ""
+        if timestamps:
+            unique_ts = sorted(set(timestamps))
+            ts_labels = [f"{t//60}:{t%60:02d}" if t >= 60 else f"{t}s" for t in unique_ts[:3]]
+            detail = f" @ {', '.join(ts_labels)}"
+        elif chunks:
+            unique_chunks = sorted(set(chunks))
+            detail = f" (Parts {', '.join(str(c) for c in unique_chunks[:3])})"
+            
+        sources_used.append({
+            'id': document_id,
+            'name': f"{doc_name}{detail}",
+            'type': doc_type,
+            'timestamps': sorted(set(timestamps)),
+            'chunks': sorted(set(chunks))
+        })
         
         return jsonify({
             'success': True,
@@ -1238,30 +1258,48 @@ def workspace_chat():
             n_results=8
         )
         
-        if not results['documents'] or not results['documents'][0]:
-            return jsonify({'success': True, 'answer': "No relevant content found in the workspace.", 'sources_used': []})
+        has_matched_chunks = bool(results.get('documents') and results['documents'][0])
             
         sources_used = {}
-        for doc_text, meta in zip(results['documents'][0], results['metadatas'][0]):
-            src_id = meta.get('source_doc_id', 'unknown')
-            src_name = meta.get('source_name', 'Unknown Source')
-            src_type = meta.get('source_type', 'unknown')
-            
-            if src_id not in sources_used:
-                sources_used[src_id] = {
-                    'name': src_name,
-                    'type': src_type,
-                    'chunks': []
-                }
+        if has_matched_chunks:
+            for doc_text, meta in zip(results['documents'][0], results['metadatas'][0]):
+                src_id = meta.get('source_doc_id', 'unknown')
+                src_name = meta.get('source_name')
+                src_type = meta.get('source_type')
                 
-            if src_type == 'youtube' and 'start_time' in meta:
-                label = f"[{src_name} @ {int(meta['start_time'])}s]"
-            elif src_type == 'pdf' and 'chunk_index' in meta:
-                label = f"[{src_name}, Section {meta['chunk_index']}]"
-            else:
-                label = f"[{src_name}]"
+                # Check documents_registry or workspace sources if metadata is missing/generic
+                if not src_name or src_name == 'Unknown Source' or not src_type:
+                    if src_id in documents_registry:
+                        src_name = src_name or documents_registry[src_id].get('name')
+                        src_type = src_type or documents_registry[src_id].get('type')
+                    elif 'filename' in meta:
+                        src_name = meta['filename']
+                        src_type = src_type or 'pdf'
+                    elif 'video_id' in meta:
+                        src_name = f"YouTube Video ({meta['video_id'][:8]}...)"
+                        src_type = src_type or 'youtube'
+                    else:
+                        src_name = src_name or "Document Source"
+                        src_type = src_type or "document"
                 
-            sources_used[src_id]['chunks'].append(f"{label}\n{doc_text}")
+                if src_id not in sources_used:
+                    sources_used[src_id] = {
+                        'name': src_name,
+                        'type': src_type or 'document',
+                        'chunks': [],
+                        'timestamps': []
+                    }
+                    
+                if src_type == 'youtube' and 'start_time' in meta:
+                    ts = int(meta['start_time'])
+                    sources_used[src_id]['timestamps'].append(ts)
+                    label = f"[{src_name} @ {ts}s]"
+                elif 'chunk_index' in meta:
+                    label = f"[{src_name}, Section {meta['chunk_index']}]"
+                else:
+                    label = f"[{src_name}]"
+                    
+                sources_used[src_id]['chunks'].append(f"{label}\n{doc_text}")
             
         context_sections = []
         for src_id, src_data in sources_used.items():
@@ -1269,15 +1307,16 @@ def workspace_chat():
             section_content = "\n\n".join(src_data['chunks'])
             context_sections.append(f"{section_header}\n{section_content}")
             
-        full_context = "\n\n---\n\n".join(context_sections)
+        full_context = "\n\n---\n\n".join(context_sections) if context_sections else "(No specific excerpts from the workspace directly matched this query.)"
         
-        num_sources = len(sources_used)
+        # Source list overview
+        ws_sources = workspace.get('sources', [])
         source_list = "\n".join([
-            f"- {'📄' if s['type']=='pdf' else '🎙️' if s['type']=='audio' else '🎥'} {s['name']} ({s['type'].upper()})"
-            for s in sources_used.values()
-        ])
+            f"- {'📄' if s.get('type')=='pdf' else '🎙️' if s.get('type')=='audio' else '🎥'} {s.get('name', 'Document')} ({s.get('type', 'doc').upper()})"
+            for s in ws_sources
+        ]) if ws_sources else "Workspace Documents"
         
-        prompt = f"""You are ChatFusion, an intelligent Knowledge Synthesizer. You have access to a unified workspace containing multiple sources that the user has uploaded. Your job is to deeply integrate these sources and provide clear, comprehensive answers.
+        prompt = f"""You are ChatFusion, an intelligent AI Knowledge Synthesizer. You have access to a unified workspace containing multiple sources that the user has uploaded. Your job is to integrate these sources and provide clear, comprehensive answers.
 
 KNOWLEDGE SOURCES IN THIS WORKSPACE:
 {source_list}
@@ -1288,16 +1327,13 @@ RELEVANT KNOWLEDGE RETRIEVED:
 USER'S QUESTION: {question}
 
 RESPONSE GUIDELINES:
-1. **Merge, Don't Separate**: Seamlessly weave together information from all relevant sources into one cohesive answer. Don't just list what each source says — integrate them into a unified narrative.
-2. **Supplement When Helpful**: If the sources cover a topic but lack depth, enrich your answer with your own knowledge — add examples, analogies, or context. Clearly distinguish between what's from the sources and what you're adding (e.g., "The documents explain X... To build on this...").
-3. **Clarity First**: Write in clear, easy-to-understand language. Use short paragraphs, bullet points, **bold key terms**, and proper markdown formatting. No walls of text.
-4. **Be Thorough**: Provide complete, well-structured responses. Don't skip valuable details or artificially shorten answers.
-5. **Practical Examples**: Include concrete examples — from the sources or your own knowledge — to make concepts tangible and useful.
-6. **Natural Attribution**: When referencing specific sources, blend it naturally (e.g., "As covered in the lecture recording and expanded upon in the PDF...").
-7. **Conversational**: If the user sends a greeting, respond naturally and ask what they'd like to explore. Don't dump a full summary.
-8. **No Disclaimers**: Don't say "the document doesn't cover X" — just give the best, richest answer you can with what's available, supplemented by your own knowledge.
+1. **Synthesize & Merge**: Weave together relevant information from the workspace sources into a unified, coherent answer with natural citations.
+2. **Proactively Supplement with AI Knowledge**: If the question asks for concepts, practical examples, formulas, background, code, or details NOT present in the workspace documents, ACTIVELY and CONFIDENTLY supply that knowledge. Never refuse to answer or say you can only speak about the uploaded files.
+3. **Transparent Bridge**: Seamlessly connect what the documents say with broader real-world knowledge (e.g., *"While the workspace documents highlight X, in broader practice Y is also essential because..."*).
+4. **Structured & Thorough**: Use clean markdown, bullet points, bold key terms, and short paragraphs. Avoid walls of text.
+5. **Conversational**: For greetings, respond warmly and ask what they would like to explore across their workspace.
 
-Provide your response below:"""
+Provide your comprehensive response below:"""
         
         if client is None:
             return jsonify({'error': 'GEMINI_API_KEY is not set on the server. Please add it to your Hugging Face Space Secrets.'}), 500
@@ -1307,14 +1343,25 @@ Provide your response below:"""
             contents=prompt
         )
         
+        formatted_sources = []
+        for k, v in sources_used.items():
+            name_display = v['name']
+            if v.get('timestamps'):
+                ts_sorted = sorted(set(v['timestamps']))
+                fmt_ts = [f"{t//60}:{t%60:02d}" if t >= 60 else f"{t}s" for t in ts_sorted[:3]]
+                name_display = f"{name_display} @ {', '.join(fmt_ts)}"
+            formatted_sources.append({
+                'id': k,
+                'name': name_display,
+                'type': v['type'],
+                'chunks_used': len(v['chunks'])
+            })
+            
         return jsonify({
             'success': True,
             'answer': response.text,
-            'sources_used': [
-                {'id': k, 'name': v['name'], 'type': v['type'], 'chunks_used': len(v['chunks'])}
-                for k, v in sources_used.items()
-            ],
-            'total_chunks_searched': len(results['documents'][0])
+            'sources_used': formatted_sources,
+            'total_chunks_searched': len(results['documents'][0]) if results.get('documents') and results['documents'] else 0
         })
     except Exception as e:
         import traceback
